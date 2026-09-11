@@ -1,0 +1,67 @@
+<resources>
+    <string name="app_name">GALY XNOVATEC</string>
+    <string name="back">Volver</string>
+
+    <!-- AddProductScreen -->
+    <string name="add_product_title">Añadir Nuevo Producto</string>
+    <string name="info_general_header">Información General</string>
+    <string name="product_name_label">Nombre del Producto (ej: Laptop Gamer i7)</string>
+    <string name="brand_label">Marca</string>
+    <string name="category_label">Categoría</string>
+    <string name="prices_offers_header">Precios y Ofertas</string>
+    <string name="normal_price_label">Precio Normal</string>
+    <string name="offer_price_label">Precio Oferta</string>
+    <string name="discount_label">%% Descuento (ej: 20)</string>
+    <string name="presentation_details_header">Presentación y Detalles</string>
+    <string name="image_url_label">URL de la Imagen</string>
+    <string name="description_label">Descripción del producto</string>
+    <string name="features_label">Características / Especificaciones (Separadas por comas)</string>
+    <string name="features_placeholder">Ej: 16GB RAM, i7 12va Gen, SSD 512GB</string>
+    <string name="save_product_button">GUARDAR PRODUCTO</string>
+    <string name="fields_mandatory_error">Por favor completa los campos obligatorios</string>
+    <string name="product_saved_success">Producto guardado con éxito</string>
+    <string name="error_prefix">Error: %1$s</string>
+    <string name="network_error_prefix">Error de red: %1$s</string>
+
+    <!-- AdminBannersScreen -->
+    <string name="manage_banners_title">Gestionar Anuncios</string>
+    <string name="new_banner_title">Nuevo Anuncio</string>
+    <string name="banner_ad_title_label">Título del anuncio</string>
+    <string name="add_button">Añadir</string>
+    <string name="banner_added_simulated">Banner añadido (Simulado)</string>
+
+    <!-- AdminPanelScreen -->
+    <string name="admin_panel_title">Panel de Administrador</string>
+    <string name="store_management_header">Gestión de Tienda</string>
+    <string name="manage_products_title">Gestionar Productos</string>
+    <string name="manage_products_desc">Añadir, editar o eliminar stock</string>
+    <string name="categories_title">Categorías</string>
+    <string name="categories_desc">Organiza tus departamentos</string>
+    <string name="banners_offers_title">Banners y Ofertas</string>
+    <string name="banners_offers_desc">Cambia la publicidad del inicio</string>
+    <string name="users_sales_header">Usuarios y Ventas</string>
+    <string name="view_orders_title">Ver Pedidos</string>
+    <string name="view_orders_desc">Control de ventas y envíos</string>
+    <string name="user_list_title">Lista de Usuarios</string>
+    <string name="user_list_desc">Base de datos de clientes</string>
+
+    <!-- General -->
+    <string name="sol_prefix">S/ </string>
+    <string name="image_mime_type">image/*</string>
+    <string name="upload_product_photo">Subir foto del producto</string>
+    <string name="or_paste_link">O pega el link aquí...</string>
+    <string name="global_management">Gestión Global GALY</string>
+    <string name="sales_label">Ventas</string>
+    <string name="orders_label">Pedidos</string>
+    <string name="clients_label">Clientes</string>
+    <string name="update_ads_desc">Actualiza imágenes de anuncios</string>
+    <string name="ops_finance_header">Operaciones y Finanzas</string>
+    <string name="view_orders_boletas_title">Ver Pedidos y Boletas</string>
+    <string name="generate_pdf_desc">Generar PDF y verificar pagos</string>
+    <string name="manage_permissions_desc">Gestionar permisos y datos</string>
+
+    <!-- CategoriesScreen -->
+    <string name="explore_categories_title">Explorar Categorías</string>
+    <string name="no_categories_found">No se encontraron categorías</string>
+    <string name="retry_load_button">REINTENTAR CARGAR</string>
+</resources>
