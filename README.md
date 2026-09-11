@@ -40,9 +40,15 @@ GALY XNOVATEC es una aplicación móvil moderna desarrollada en **Android Native
    - Importa la base de datos `galy_db.sql`.
    - Coloca la carpeta `galy_api` en tu directorio `htdocs`.
 
-3. **Configuración de IP:**
-   - Por defecto, la app usa `10.0.2.2` para el emulador de Android.
-   - Si usas un dispositivo físico, cambia la `BASE_URL` en `RetrofitClient` por la IP local de tu PC.
+3. **Configuración de Secretos (local.properties):**
+   - Crea un archivo `local.properties` en la raíz (si no existe).
+   - Añade las siguientes llaves (reemplaza con tus datos reales):
+     ```properties
+     ADMIN_EMAIL="admin@galyxnovatec.com"
+     ADMIN_PASSWORD="TU_PASSWORD_MAESTRA"
+     MP_PUBLIC_KEY="TU_LLAVE_MERCADO_PAGO"
+     BASE_URL="http://TU_IP_LOCAL/galy_api/"
+     ```
 
 4. **Ejecutar en Android Studio:**
    - Abre el proyecto, sincroniza Gradle y presiona "Run".

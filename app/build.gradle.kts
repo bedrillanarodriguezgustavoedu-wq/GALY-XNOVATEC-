@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -20,10 +22,23 @@ android {
         ndk {
             abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
         }
+
+        // CARGAR SECRETOS DESDE local.properties
+        val properties = Properties()
+        val propertiesFile = project.rootProject.file("local.properties")
+        if (propertiesFile.exists()) {
+            properties.load(propertiesFile.inputStream())
+        }
+
+        buildConfigField("String", "ADMIN_EMAIL", properties.getProperty("ADMIN_EMAIL", "\"admin@galyxnovatec.com\""))
+        buildConfigField("String", "ADMIN_PASSWORD", properties.getProperty("ADMIN_PASSWORD", "\"GALY_PRO_2025\""))
+        buildConfigField("String", "MP_PUBLIC_KEY", properties.getProperty("MP_PUBLIC_KEY", "\"TEST-ad6631b0-955a-40a2-894b-439f04128521\""))
+        buildConfigField("String", "BASE_URL", properties.getProperty("BASE_URL", "\"http://10.0.2.2/galy_api/\""))
     }
 
-    androidResources {
-        // Permitimos la compresión para que el sistema las extraiga al instalar
+    buildFeatures {
+        compose = true
+        buildConfig = true
     }
 
     packaging {

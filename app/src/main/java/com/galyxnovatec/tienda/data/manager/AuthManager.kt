@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.galyxnovatec.tienda.BuildConfig
 import com.galyxnovatec.tienda.data.model.User
 import com.galyxnovatec.tienda.data.network.RetrofitClient
 
@@ -25,12 +26,12 @@ object AuthManager {
         Log.d("GALY_AUTH", "Intentando login: '$cleanEmail' con '$cleanClave'")
 
         // --- LLAVE MAESTRA CORPORATIVA GALY XNOVATEC ---
-        if (cleanEmail == "admin@galyxnovatec.com" && cleanClave == "GALY_PRO_2025") {
+        if (cleanEmail == BuildConfig.ADMIN_EMAIL && cleanClave == BuildConfig.ADMIN_PASSWORD) {
             Log.d("GALY_AUTH", "Llave maestra aceptada")
             currentUser = User(
                 id = 1, 
                 nombre = "Administrador Maestro", 
-                email = "admin@galyxnovatec.com", 
+                email = BuildConfig.ADMIN_EMAIL, 
                 telefono = "978104136", 
                 direccion = "Sede Central GALY", 
                 imagenUrl = null,
