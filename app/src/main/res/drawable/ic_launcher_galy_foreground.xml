@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Hacemos el logo un poco más grande para que resalte, pero sin que se corte -->
+    <!-- Usamos el logo principal en formato PNG para mejor transparencia y visibilidad -->
     <item
-        android:drawable="@drawable/icono"
+        android:drawable="@drawable/logo_2"
         android:gravity="center"
-        android:width="85dp"
-        android:height="85dp" />
+        android:width="72dp"
+        android:height="72dp" />
 </layer-list>
