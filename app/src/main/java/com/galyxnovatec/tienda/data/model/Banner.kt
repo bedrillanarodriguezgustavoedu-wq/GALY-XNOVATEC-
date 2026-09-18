@@ -1,6 +1,7 @@
 package com.galyxnovatec.tienda.data.model
 
 import android.net.Uri
+import com.galyxnovatec.tienda.BuildConfig
 import com.google.gson.annotations.SerializedName
 
 data class Banner(
@@ -18,6 +19,6 @@ data class Banner(
         
         // Codificamos el nombre del archivo para manejar espacios (ej: %20)
         val safeName = Uri.encode(imagenUrl)
-        return "http://10.0.2.2/galy_api/img/$safeName"
+        return "${BuildConfig.BASE_URL}img/$safeName"
     }
 }

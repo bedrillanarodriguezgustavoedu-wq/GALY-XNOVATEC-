@@ -33,6 +33,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.galyxnovatec.tienda.BuildConfig
 import com.galyxnovatec.tienda.R
 import com.galyxnovatec.tienda.data.network.RetrofitClient
 import com.galyxnovatec.tienda.data.repository.ProductRepository
@@ -53,8 +54,12 @@ fun AddProductScreen(
     var nombre by remember { mutableStateOf("") }
     var marca by remember { mutableStateOf("") }
     var categoria by remember { mutableStateOf("") }
+    var expandedCat by remember { mutableStateOf(false) }
+    val categories = ProductRepository.obtenerCategorias()
+
     var precioNormal by remember { mutableStateOf("") }
     var precioOferta by remember { mutableStateOf("") }
+    var precioCompra by remember { mutableStateOf("") }
     var imagenUrl by remember { mutableStateOf("") }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var descripcion by remember { mutableStateOf("") }
@@ -170,24 +175,63 @@ fun AddProductScreen(
                         unfocusedBorderColor = Color.White.copy(alpha = 0.2f)
                     )
                 )
-                OutlinedTextField(
-                    value = categoria,
-                    onValueChange = { categoria = it },
-                    label = { Text(stringResource(R.string.category_label)) },
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedLabelColor = ColorGalyRed,
-                        unfocusedLabelColor = Color.Gray,
-                        focusedBorderColor = ColorGalyRed,
-                        unfocusedBorderColor = Color.White.copy(alpha = 0.2f)
+                ExposedDropdownMenuBox(
+                    expanded = expandedCat,
+                    onExpandedChange = { expandedCat = !expandedCat },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    OutlinedTextField(
+                        value = categoria,
+                        onValueChange = { categoria = it },
+                        label = { Text("Categoría") },
+                        modifier = Modifier.menuAnchor(),
+                        readOnly = false,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = ColorGalyRed,
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.2f)
+                        ),
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedCat) }
                     )
-                )
+                    ExposedDropdownMenu(
+                        expanded = expandedCat,
+                        onDismissRequest = { expandedCat = false },
+                        modifier = Modifier.background(Color(0xFF222222))
+                    ) {
+                        categories.forEach { selectionOption ->
+                            DropdownMenuItem(
+                                text = { Text(selectionOption, color = Color.White) },
+                                onClick = {
+                                    categoria = selectionOption
+                                    expandedCat = false
+                                }
+                            )
+                        }
+                    }
+                }
             }
 
             Text(stringResource(R.string.prices_offers_header), fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.White)
+
+            OutlinedTextField(
+                value = precioCompra,
+                onValueChange = { precioCompra = it },
+                label = { Text("P. Compra (Costo Proveedor)") },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                shape = RoundedCornerShape(12.dp),
+                prefix = { Text(stringResource(R.string.sol_prefix)) },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedLabelColor = ColorGalyRed,
+                    unfocusedLabelColor = Color.Gray,
+                    focusedBorderColor = ColorGalyRed,
+                    unfocusedBorderColor = Color.White.copy(alpha = 0.2f)
+                )
+            )
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
@@ -294,7 +338,7 @@ fun AddProductScreen(
                     val displayImage = if (imageUri != null) imageUri 
                                        else if (imagenUrl.isNotEmpty()) {
                                            if (imagenUrl.startsWith("http")) imagenUrl 
-                                           else "http://10.0.2.2/galy_api/img/$imagenUrl"
+                                           else "${BuildConfig.BASE_URL}img/$imagenUrl"
                                        } else null
 
                     if (displayImage == null) {
@@ -447,6 +491,7 @@ fun AddProductScreen(
                                     "categoria" to categoria,
                                     "precio_normal" to (precioNormal.toDoubleOrNull() ?: 0.0),
                                     "precio_oferta" to (precioOferta.toDoubleOrNull() ?: 0.0),
+                                    "precio_compra" to (precioCompra.toDoubleOrNull() ?: 0.0),
                                     "imagen_url" to imagenUrl,
                                     "descripcion" to descripcion,
                                     "descuento" to (descuento.toIntOrNull() ?: 0),

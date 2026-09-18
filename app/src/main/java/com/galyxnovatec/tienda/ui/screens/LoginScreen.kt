@@ -38,6 +38,7 @@ import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 
 import com.galyxnovatec.tienda.R
 import com.galyxnovatec.tienda.data.manager.AuthManager
+import com.galyxnovatec.tienda.data.manager.CartManager
 import com.galyxnovatec.tienda.ui.theme.*
 import kotlinx.coroutines.launch
 
@@ -225,6 +226,7 @@ fun LoginScreen(
                 onClick = {
                     scope.launch {
                         if (AuthManager.login(email, password)) {
+                            CartManager.sincronizarConServidor(context)
                             if (AuthManager.currentUser?.esAdmin == true) {
                                 Toast.makeText(context, "✅ ACCESO DE ADMINISTRADOR CONCEDIDO", Toast.LENGTH_LONG).show()
                             }

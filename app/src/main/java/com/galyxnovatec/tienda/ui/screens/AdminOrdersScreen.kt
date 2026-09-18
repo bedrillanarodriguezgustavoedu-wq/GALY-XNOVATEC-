@@ -13,34 +13,29 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
-import androidx.compose.material.icons.filled.Assignment
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.FilterList
-import androidx.compose.material.icons.filled.LocalShipping
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Payments
-import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import com.galyxnovatec.tienda.data.manager.OrderManager
+import com.galyxnovatec.tienda.data.manager.PdfManager
 import com.galyxnovatec.tienda.data.model.Pedido
 import com.galyxnovatec.tienda.ui.theme.ColorGalyRed
 import kotlinx.coroutines.launch
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -52,12 +47,15 @@ fun AdminOrdersScreen(alVolver: () -> Unit) {
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedStatus by remember { mutableStateOf("TODOS") }
-    val statuses = listOf("TODOS", "PENDIENTE", "PAGADO", "ENVIADO", "ENTREGADO")
+    val statuses = listOf("TODOS", "PENDIENTE", "PAGADO", "PREPARANDO", "EN CAMINO", "ENTREGADO")
 
     val filteredOrders = remember(orders, searchQuery, selectedStatus) {
         orders.filter { order ->
-            val matchesSearch = (order.clienteNombre?.contains(searchQuery, ignoreCase = true) ?: false) ||
-                               order.id.toString().contains(searchQuery)
+            val query = searchQuery.lowercase()
+            val matchesSearch = (order.clienteNombre?.lowercase()?.contains(query) ?: false) ||
+                               (order.clienteEmail?.lowercase()?.contains(query) ?: false) ||
+                               order.id.toString().contains(query)
+            
             val matchesStatus = if (selectedStatus == "TODOS") true else order.estado.equals(selectedStatus, ignoreCase = true)
             matchesSearch && matchesStatus
         }
@@ -78,6 +76,36 @@ fun AdminOrdersScreen(alVolver: () -> Unit) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver", tint = Color.White)
                     }
                 },
+                actions = {
+                    IconButton(onClick = {
+                        PdfManager.generarReportePedidos(context, filteredOrders)
+                    }) {
+                        Icon(Icons.Default.PictureAsPdf, "Reporte PDF", tint = Color.White)
+                    }
+                    IconButton(onClick = {
+                        // Export to CSV
+                        val csvData = StringBuilder()
+                        csvData.append("ID,Fecha,Cliente,Total,Estado\n")
+                        filteredOrders.forEach { o ->
+                            csvData.append("${o.id},${o.fecha},${o.clienteNombre},${o.total},${o.estado}\n")
+                        }
+                        try {
+                            val file = File(context.cacheDir, "Ventas_GALY.csv")
+                            file.writeText(csvData.toString())
+                            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                            val intent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/csv"
+                                putExtra(Intent.EXTRA_STREAM, uri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            context.startActivity(Intent.createChooser(intent, "Descargar Reporte"))
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Error al exportar", Toast.LENGTH_SHORT).show()
+                        }
+                    }) {
+                        Icon(Icons.Default.FileDownload, "Excel", tint = Color.White)
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black)
             )
         }
@@ -87,8 +115,8 @@ fun AdminOrdersScreen(alVolver: () -> Unit) {
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                placeholder = { Text("Buscar por cliente o # orden", color = Color.Gray) },
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                placeholder = { Text("Buscar cliente o # orden", color = Color.Gray) },
                 leadingIcon = { Icon(Icons.Default.Search, null, tint = ColorGalyRed) },
                 shape = RoundedCornerShape(16.dp),
                 colors = OutlinedTextFieldDefaults.colors(
@@ -96,17 +124,16 @@ fun AdminOrdersScreen(alVolver: () -> Unit) {
                     unfocusedTextColor = Color.White,
                     focusedBorderColor = ColorGalyRed,
                     unfocusedBorderColor = Color.White.copy(alpha = 0.1f)
-                ),
-                singleLine = true
+                )
             )
 
-            // Filtros de Estado
+            // Filtros
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(bottom = 8.dp)
+                modifier = Modifier.padding(bottom = 16.dp)
             ) {
-                items(statuses) { status ->
+                items(items = statuses) { status ->
                     FilterChip(
                         selected = selectedStatus == status,
                         onClick = { selectedStatus = status },
@@ -116,42 +143,24 @@ fun AdminOrdersScreen(alVolver: () -> Unit) {
                             selectedLabelColor = Color.White,
                             containerColor = Color.White.copy(alpha = 0.05f),
                             labelColor = Color.Gray
-                        ),
-                        border = FilterChipDefaults.filterChipBorder(
-                            enabled = true,
-                            selected = selectedStatus == status,
-                            borderColor = Color.White.copy(alpha = 0.1f),
-                            selectedBorderColor = ColorGalyRed,
-                            borderWidth = 1.dp,
-                            selectedBorderWidth = 1.dp
                         )
                     )
                 }
             }
 
-            // Banner de Resumen
+            // Banner Resumen
             Card(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A))
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF0F0F0F)),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
             ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(modifier = Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("TOTAL FILTRADO", color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Text("TOTAL FILTRADO", color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Black)
                         Text("S/ ${totalVentas.toInt()}", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black)
                     }
-                    Surface(
-                        color = ColorGalyRed.copy(alpha = 0.1f),
-                        shape = CircleShape,
-                        modifier = Modifier.size(48.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.TrendingUp, null, tint = ColorGalyRed)
-                        }
-                    }
+                    Icon(Icons.AutoMirrored.Filled.TrendingUp, null, tint = Color(0xFF00FF41), modifier = Modifier.size(32.dp))
                 }
             }
 
@@ -170,23 +179,14 @@ fun AdminOrdersScreen(alVolver: () -> Unit) {
                             contentPadding = PaddingValues(16.dp),
                             verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
-                            items(filteredOrders) { order ->
+                            items(items = filteredOrders, key = { it.id }) { order ->
                                 AdminOrderCard(order) { newStatus ->
                                     scope.launch {
                                         val success = OrderManager.updateOrderStatus(order.id, newStatus)
                                         if (success) {
-                                            Toast.makeText(context, "Estado actualizado a $newStatus", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "Actualizado a $newStatus", Toast.LENGTH_SHORT).show()
                                             OrderManager.fetchAllOrders()
-                                        } else {
-                                            Toast.makeText(context, "Error al actualizar", Toast.LENGTH_SHORT).show()
                                         }
-                                    }
-                                }
-                            }
-                            if (filteredOrders.isEmpty()) {
-                                item {
-                                    Box(modifier = Modifier.fillMaxWidth().padding(top = 40.dp), contentAlignment = Alignment.Center) {
-                                        Text("No se encontraron pedidos", color = Color.Gray)
                                     }
                                 }
                             }
@@ -201,139 +201,135 @@ fun AdminOrdersScreen(alVolver: () -> Unit) {
 @Composable
 fun AdminOrderCard(order: Pedido, onStatusChange: (String) -> Unit) {
     var showMenu by remember { mutableStateOf(false) }
+    var showDetail by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF111111)),
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { showDetail = true },
+        shape = RoundedCornerShape(28.dp),
+        color = Color(0xFF0F0F0F),
         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
     ) {
-        Column(modifier = Modifier.padding(20.dp)) {
+        Column(modifier = Modifier.padding(24.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Text("Cliente: ${order.clienteNombre ?: "Usuario GALY"}", fontWeight = FontWeight.Black, color = Color.White, fontSize = 16.sp)
-                    Text("Orden #${order.id} - ${order.fecha}", color = Color.Gray, fontSize = 12.sp)
-                    
-                    if (!order.clienteTelefono.isNullOrEmpty()) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(top = 4.dp).clickable {
-                                try {
-                                    val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${order.clienteTelefono}"))
-                                    context.startActivity(intent)
-                                } catch (e: Exception) {}
-                            }
-                        ) {
-                            Icon(Icons.Default.Phone, null, tint = Color.Cyan, modifier = Modifier.size(14.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text(order.clienteTelefono, color = Color.Cyan, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        color = ColorGalyRed.copy(alpha = 0.1f),
+                        shape = CircleShape,
+                        modifier = Modifier.size(42.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Person, null, tint = ColorGalyRed, modifier = Modifier.size(20.dp))
                         }
+                    }
+                    Spacer(Modifier.width(16.dp))
+                    Column {
+                        Text(
+                            text = order.clienteNombre ?: "Usuario GALY",
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White,
+                            fontSize = 18.sp
+                        )
+                        Text(
+                            "Orden #00${order.id} • ${order.fecha.take(10)}",
+                            color = Color.Gray,
+                            fontSize = 12.sp
+                        )
                     }
                 }
                 
                 Box {
-                    IconButton(onClick = { showMenu = true }) {
-                        Icon(Icons.Default.MoreVert, null, tint = Color.White)
+                    IconButton(
+                        onClick = { showMenu = true },
+                        modifier = Modifier.background(Color.White.copy(alpha = 0.05f), CircleShape)
+                    ) {
+                        Icon(Icons.Default.MoreVert, null, tint = Color.White, modifier = Modifier.size(20.dp))
                     }
                     DropdownMenu(
                         expanded = showMenu,
                         onDismissRequest = { showMenu = false },
-                        modifier = Modifier.background(Color(0xFF222222))
+                        modifier = Modifier.background(Color(0xFF111111))
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Marcar PAGADO", color = Color.White) },
-                            onClick = { onStatusChange("PAGADO"); showMenu = false },
-                            leadingIcon = { Icon(Icons.Default.Assignment, null, tint = Color.Green) }
+                            text = { Text("M. PAGADO", color = Color.White) },
+                            onClick = { onStatusChange("PAGADO"); showMenu = false }
                         )
                         DropdownMenuItem(
-                            text = { Text("Marcar ENVIADO", color = Color.White) },
-                            onClick = { onStatusChange("ENVIADO"); showMenu = false },
-                            leadingIcon = { Icon(Icons.Default.LocalShipping, null, tint = Color.Yellow) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Marcar ENTREGADO", color = Color.White) },
-                            onClick = { onStatusChange("ENTREGADO"); showMenu = false },
-                            leadingIcon = { Icon(Icons.Default.CheckCircle, null, tint = Color.Cyan) }
+                            text = { Text("M. ENTREGADO", color = Color.White) },
+                            onClick = { onStatusChange("ENTREGADO"); showMenu = false }
                         )
                     }
                 }
             }
-            
-            Divider(modifier = Modifier.padding(vertical = 12.dp), color = Color.White.copy(alpha = 0.05f))
-            
-            // DIRECCIÓN DE ENTREGA (NUEVO)
-            if (!order.direccion.isNullOrEmpty()) {
-                Surface(
-                    color = Color.White.copy(alpha = 0.05f),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
-                ) {
-                    Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.LocationOn, null, tint = ColorGalyRed, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(12.dp))
-                        Column {
-                            Text("Entrega en:", color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            Text(
-                                "${order.direccion}, ${order.distrito ?: ""} ${order.ciudad ?: ""}",
-                                color = Color.White,
-                                fontSize = 12.sp
-                            )
-                            if (!order.referencia.isNullOrEmpty()) {
-                                Text("Ref: ${order.referencia}", color = Color.LightGray, fontSize = 11.sp)
-                            }
-                            
-                            // BOTÓN DE MAPA (MEJORADO)
-                            val query = Uri.encode("${order.direccion}, ${order.distrito ?: ""}, ${order.ciudad ?: ""}")
-                            val mapUrl = if (!order.mapsUrl.isNullOrEmpty()) order.mapsUrl 
-                                         else "https://www.google.com/maps/search/?api=1&query=$query"
 
-                            Spacer(Modifier.height(10.dp))
-                            Button(
-                                onClick = {
-                                    try {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(mapUrl))
-                                        context.startActivity(intent)
-                                    } catch (e: Exception) {
-                                        Toast.makeText(context, "No se pudo abrir el mapa", Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth().height(36.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = ColorGalyRed.copy(alpha = 0.2f)),
-                                border = BorderStroke(1.dp, ColorGalyRed),
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(0.dp)
-                            ) {
-                                Icon(Icons.Default.Map, null, tint = Color.White, modifier = Modifier.size(14.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text("VER EN MAPA", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
-            }
+            Spacer(Modifier.height(24.dp))
 
-            order.productos?.forEach { prod ->
-                Text("• ${prod.nombre} (x${prod.cantidad})", color = Color.LightGray, fontSize = 13.sp)
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-            
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.Bottom
             ) {
                 Column {
-                    Text("Método: ${order.metodoPago ?: "YAPE"}", color = Color.Cyan, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    Text("S/ ${order.total.toInt()}", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Black)
+                    Text("TOTAL VENTA", color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Black)
+                    Text("S/ ${order.total.toInt()}", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black)
                 }
                 StatusBadge(order.estado)
             }
+
+            Row(
+                modifier = Modifier.padding(top = 20.dp).fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                SmallActionButton(Icons.Default.Email, Color.Yellow) { PdfManager.enviarBoletaPorEmail(context, order) }
+                SmallActionButton(Icons.AutoMirrored.Filled.Chat, Color(0xFF00FF41)) { PdfManager.enviarBoletaPorWhatsApp(context, order) }
+                SmallActionButton(Icons.Default.RemoveRedEye, Color.Cyan) { showDetail = true }
+            }
+        }
+    }
+
+    if (showDetail) {
+        AlertDialog(
+            onDismissRequest = { showDetail = false },
+            containerColor = Color(0xFF0A0A0A),
+            title = { Text("Detalle Orden #00${order.id}", color = Color.White, fontWeight = FontWeight.Black) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Dirección: ${order.direccion}", color = Color.LightGray)
+                    Text("Método: ${order.metodoPago}", color = Color.LightGray)
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.1f), modifier = Modifier.padding(vertical = 8.dp))
+                    order.productos?.forEach { prod ->
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(prod.nombre ?: "Producto", color = Color.White, modifier = Modifier.weight(1f))
+                            Text("x${prod.cantidad}", color = ColorGalyRed, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDetail = false }) { Text("CERRAR", color = Color.White) }
+            }
+        )
+    }
+}
+
+@Composable
+fun SmallActionButton(icon: ImageVector, color: Color, onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .size(40.dp)
+            .clickable { onClick() },
+        shape = RoundedCornerShape(12.dp),
+        color = color.copy(alpha = 0.1f),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.2f))
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = color, modifier = Modifier.size(18.dp))
         }
     }
 }

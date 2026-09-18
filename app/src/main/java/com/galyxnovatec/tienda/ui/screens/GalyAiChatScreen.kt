@@ -1,6 +1,7 @@
 package com.galyxnovatec.tienda.ui.screens
 
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -13,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,18 +28,17 @@ import com.galyxnovatec.tienda.data.network.RetrofitClient
 import com.galyxnovatec.tienda.ui.theme.ColorGalyRed
 import kotlinx.coroutines.launch
 
-data class ChatMessage(val text: String, val isFromUser: Boolean)
+data class ChatMessage(val text: String, val isFromUser: Boolean, val productId: Int? = null)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GalyAiChatScreen(alVolver: () -> Unit) {
+fun GalyAiChatScreen(alVolver: () -> Unit, alSeleccionarProducto: (Int) -> Unit) {
     var messages by remember { mutableStateOf(listOf(ChatMessage("¡Hola! Soy GALY AI, tu experto en tecnología. Puedo buscar entre nuestros 100 productos para recomendarte lo mejor. ¿Qué necesitas hoy?", false))) }
     var inputText by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     var isTyping by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
-    // Auto-scroll al último mensaje
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
             listState.animateScrollToItem(messages.size - 1)
@@ -84,14 +85,13 @@ fun GalyAiChatScreen(alVolver: () -> Unit) {
                 contentPadding = PaddingValues(vertical = 16.dp)
             ) {
                 items(messages) { msg ->
-                    ChatBubble(msg)
+                    ChatBubble(msg, alSeleccionarProducto)
                 }
                 if (isTyping) {
                     item { Text("GALY AI está pensando...", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.padding(start = 12.dp)) }
                 }
             }
 
-            // Input de chat
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 color = Color(0xFF111111),
@@ -125,7 +125,8 @@ fun GalyAiChatScreen(alVolver: () -> Unit) {
                                 scope.launch {
                                     try {
                                         val response = RetrofitClient.aiInstance.getAiResponse(userMsg)
-                                        messages = messages + ChatMessage(response["reply"] ?: "No entendí eso, ¿puedes repetirlo?", false)
+                                        val pid = (response["product_id"] as? Double)?.toInt()
+                                        messages = messages + ChatMessage((response["reply"] as? String) ?: "Lo siento, no entendí.", false, pid)
                                     } catch (e: Exception) {
                                         messages = messages + ChatMessage("Error: No pude conectarme con mi servidor Python.", false)
                                     } finally {
@@ -148,27 +149,44 @@ fun GalyAiChatScreen(alVolver: () -> Unit) {
 }
 
 @Composable
-fun ChatBubble(message: ChatMessage) {
+fun ChatBubble(message: ChatMessage, onProductClick: (Int) -> Unit) {
     Box(
         modifier = Modifier.fillMaxWidth(),
         contentAlignment = if (message.isFromUser) Alignment.CenterEnd else Alignment.CenterStart
     ) {
-        Surface(
-            color = if (message.isFromUser) ColorGalyRed else Color(0xFF1A1A1A),
-            shape = RoundedCornerShape(
-                topStart = 20.dp,
-                topEnd = 20.dp,
-                bottomStart = if (message.isFromUser) 20.dp else 4.dp,
-                bottomEnd = if (message.isFromUser) 4.dp else 20.dp
-            ),
-            modifier = Modifier.widthIn(max = 280.dp)
-        ) {
-            Text(
-                text = message.text,
-                color = Color.White,
-                modifier = Modifier.padding(14.dp),
-                fontSize = 15.sp
-            )
+        Column(horizontalAlignment = if (message.isFromUser) Alignment.End else Alignment.Start) {
+            Surface(
+                color = if (message.isFromUser) ColorGalyRed else Color(0xFF1A1A1A),
+                shape = RoundedCornerShape(
+                    topStart = 20.dp,
+                    topEnd = 20.dp,
+                    bottomStart = if (message.isFromUser) 20.dp else 4.dp,
+                    bottomEnd = if (message.isFromUser) 4.dp else 20.dp
+                ),
+                modifier = Modifier.widthIn(max = 280.dp)
+            ) {
+                Text(
+                    text = message.text,
+                    color = Color.White,
+                    modifier = Modifier.padding(14.dp),
+                    fontSize = 15.sp
+                )
+            }
+            
+            if (message.productId != null) {
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = { onProductClick(message.productId) },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.1f)),
+                    border = BorderStroke(1.dp, ColorGalyRed),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Icon(Icons.Default.Visibility, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("VER PRODUCTO", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
         }
     }
 }

@@ -1,5 +1,7 @@
 package com.galyxnovatec.tienda.navigation
 
+import java.net.URLEncoder
+
 /**
  * Representa todas las rutas de navegación disponibles en la aplicación GALY.
  *
@@ -23,7 +25,9 @@ sealed class Screen(val route: String) {
     object Checkout : Screen("checkout")
     object Orders : Screen("orders")
     object TechnicalService : Screen("technical_service")
-    object Addresses : Screen("addresses")
+    object Addresses : Screen("addresses?selectionMode={selectionMode}") {
+        fun createRoute(selectionMode: Boolean = false) = "addresses?selectionMode=$selectionMode"
+    }
     object AdminPanel : Screen("admin_panel")
     object AddProduct : Screen("add_product")
     object AdminBanners : Screen("admin_banners")
@@ -37,4 +41,13 @@ sealed class Screen(val route: String) {
     object YapePayment : Screen("yape_payment")
     object UserData : Screen("user_data")
     object AdminOrders : Screen("admin_orders")
+    object AdminCoupons : Screen("admin_coupons")
+    object AdminNotifications : Screen("admin_notifications")
+    object AdminTickets : Screen("admin_tickets")
+    object Tracking : Screen("tracking/{orderId}") {
+        fun createRoute(orderId: Int) = "tracking/$orderId"
+    }
+    object PaymentWebView : Screen("payment_webview?url={url}") {
+        fun createRoute(url: String) = "payment_webview?url=${URLEncoder.encode(url, "UTF-8")}"
+    }
 }

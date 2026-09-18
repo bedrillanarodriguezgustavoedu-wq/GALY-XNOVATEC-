@@ -2,9 +2,11 @@ package com.galyxnovatec.tienda.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -18,6 +20,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -28,10 +31,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import com.galyxnovatec.tienda.BuildConfig
 import com.galyxnovatec.tienda.R
+import com.galyxnovatec.tienda.data.manager.AuthManager
 import com.galyxnovatec.tienda.data.model.ServicioTecnico
-import com.galyxnovatec.tienda.data.repository.ProductRepository
+import com.galyxnovatec.tienda.data.network.RetrofitClient
 import com.galyxnovatec.tienda.ui.theme.ColorGalyRed
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,13 +46,26 @@ fun TechnicalServiceScreen(
     alVolver: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val user = AuthManager.currentUser
     val numeroGaly = "51978104136"
+    
     var servicios by remember { mutableStateOf<List<ServicioTecnico>>(emptyList()) }
+    var misTickets by remember { mutableStateOf<List<ServicioTecnico>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
+    
+    // Estados para nuevo ticket
+    var showAddDialog by remember { mutableStateOf(false) }
+    var modeloEquipo by remember { mutableStateOf("") }
+    var descripcionFalla by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
-        ProductRepository.sincronizarTodo()
-        servicios = ProductRepository.obtenerServicios()
+        try {
+            servicios = RetrofitClient.instance.getServiciosTecnicos()
+            user?.id?.let {
+                misTickets = RetrofitClient.instance.getUserTickets(it)
+            }
+        } catch (e: Exception) { }
         isLoading = false
     }
     
@@ -55,7 +75,7 @@ fun TechnicalServiceScreen(
                 title = { Text("Centro de Soporte GALY", fontWeight = FontWeight.Black, color = Color.White) },
                 navigationIcon = {
                     IconButton(onClick = alVolver) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Volver", tint = Color.White)
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Volver", tint = Color.White)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black)
@@ -69,7 +89,7 @@ fun TechnicalServiceScreen(
                 .background(Color.Black)
                 .verticalScroll(rememberScrollState())
         ) {
-            // Hero Section con Imagen Completa (Ajustada para verla 100%)
+            // Hero Section
             Box(
                 modifier = Modifier.fillMaxWidth(),
                 contentAlignment = Alignment.BottomCenter
@@ -81,7 +101,6 @@ fun TechnicalServiceScreen(
                     contentScale = ContentScale.FillWidth 
                 )
                 
-                // Capa de contraste premium para que el texto resalte sobre la imagen
                 Box(
                     modifier = Modifier
                         .matchParentSize()
@@ -118,14 +137,21 @@ fun TechnicalServiceScreen(
             }
 
             Column(modifier = Modifier.padding(24.dp)) {
-                // Info badges
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 32.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    SupportBadge(icon = Icons.Default.Verified, text = "Certificado")
-                    SupportBadge(icon = Icons.Default.Timer, text = "Express")
-                    SupportBadge(icon = Icons.Default.Shield, text = "Garantía")
+                // MIS TICKETS DE SOPORTE
+                if (misTickets.isNotEmpty()) {
+                    Text(
+                        "Seguimiento de mis Equipos",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Black,
+                        color = ColorGalyRed,
+                        modifier = Modifier.padding(bottom = 16.dp, top = 12.dp)
+                    )
+                    
+                    misTickets.forEach { ticket ->
+                        TicketStatusCard(ticket)
+                    }
+                    
+                    Spacer(Modifier.height(24.dp))
                 }
 
                 Text(
@@ -141,17 +167,7 @@ fun TechnicalServiceScreen(
                         CircularProgressIndicator(color = ColorGalyRed)
                     }
                 } else {
-                    val displayList = if (servicios.isEmpty()) {
-                        listOf(
-                            ServicioTecnico(1, "Reparación de Hardware", "Placas madre, pantallas y más.", 0.0),
-                            ServicioTecnico(2, "Mantenimiento Preventivo", "Limpieza y pasta térmica.", 0.0),
-                            ServicioTecnico(3, "Optimización de Software", "Sistemas y drivers gaming.", 0.0)
-                        )
-                    } else {
-                        servicios
-                    }
-
-                    displayList.forEach { servicio ->
+                    servicios.forEach { servicio ->
                         ModernServiceItem(
                             title = servicio.nombre,
                             desc = servicio.descripcion ?: "Calidad GALY garantizada.",
@@ -191,17 +207,20 @@ fun TechnicalServiceScreen(
                         
                         Button(
                             onClick = { 
-                                val mensaje = "Hola GALY, necesito soporte técnico para mi equipo."
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$numeroGaly?text=${Uri.encode(mensaje)}"))
-                                context.startActivity(intent)
+                                if (user != null) showAddDialog = true
+                                else {
+                                    val mensaje = "Hola GALY, necesito soporte técnico para mi equipo."
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$numeroGaly?text=${Uri.encode(mensaje)}"))
+                                    context.startActivity(intent)
+                                }
                             },
                             modifier = Modifier.fillMaxWidth().height(60.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366)),
+                            colors = ButtonDefaults.buttonColors(containerColor = if(user != null) ColorGalyRed else Color(0xFF25D366)),
                             shape = RoundedCornerShape(16.dp)
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.Chat, null, Modifier.size(24.dp))
+                            Icon(if(user != null) Icons.Default.AddCircle else Icons.AutoMirrored.Filled.Chat, null, Modifier.size(24.dp))
                             Spacer(Modifier.width(12.dp))
-                            Text("WHATSAPP SOPORTE", fontWeight = FontWeight.Black, fontSize = 15.sp)
+                            Text(if(user != null) "SOLICITAR REPARACIÓN" else "WHATSAPP SOPORTE", fontWeight = FontWeight.Black, fontSize = 15.sp)
                         }
 
                         Spacer(modifier = Modifier.height(16.dp))
@@ -224,22 +243,139 @@ fun TechnicalServiceScreen(
             }
         }
     }
+
+    if (showAddDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddDialog = false },
+            containerColor = Color(0xFF111111),
+            title = { Text("Solicitar Reparación", color = Color.White, fontWeight = FontWeight.Black) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    OutlinedTextField(
+                        value = modeloEquipo,
+                        onValueChange = { modeloEquipo = it },
+                        label = { Text("Modelo del Equipo (ej: Acer Nitro 5)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                    )
+                    OutlinedTextField(
+                        value = descripcionFalla,
+                        onValueChange = { descripcionFalla = it },
+                        label = { Text("Descripción de la falla") },
+                        modifier = Modifier.fillMaxWidth().height(100.dp),
+                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            val res = RetrofitClient.instance.createTicket(
+                                mapOf("usuario_id" to user!!.id, "equipo_modelo" to modeloEquipo, "descripcion_falla" to descripcionFalla)
+                            )
+                            if (res["success"] == true) {
+                                Toast.makeText(context, "✅ Solicitud enviada", Toast.LENGTH_SHORT).show()
+                                showAddDialog = false
+                                modeloEquipo = ""
+                                descripcionFalla = ""
+                                user?.id?.let { misTickets = RetrofitClient.instance.getUserTickets(it) }
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ColorGalyRed)
+                ) {
+                    Text("ENVIAR SOLICITUD")
+                }
+            }
+        )
+    }
 }
 
 @Composable
-fun SupportBadge(icon: ImageVector, text: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Surface(
-            modifier = Modifier.size(48.dp),
-            shape = CircleShape,
-            color = Color(0xFF1A1A1A)
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(icon, null, Modifier.size(20.dp), tint = Color.White)
+fun TicketStatusCard(ticket: ServicioTecnico) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F0F0F)),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    modifier = Modifier.size(44.dp),
+                    shape = CircleShape,
+                    color = when(ticket.estado) {
+                        "Recibido" -> Color.Gray.copy(alpha = 0.2f)
+                        "En Diagnostico" -> Color.Yellow.copy(alpha = 0.2f)
+                        "Reparando" -> Color.Cyan.copy(alpha = 0.2f)
+                        "Listo" -> Color(0xFF00FF41).copy(alpha = 0.2f)
+                        "Entregado" -> Color.White.copy(alpha = 0.2f)
+                        else -> Color.Gray.copy(alpha = 0.2f)
+                    }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = when(ticket.estado) {
+                                "Listo" -> Icons.Default.CheckCircle
+                                "Reparando" -> Icons.Default.Build
+                                "En Diagnostico" -> Icons.Default.Search
+                                else -> Icons.Default.Inbox
+                            },
+                            null,
+                            tint = when(ticket.estado) {
+                                "Listo" -> Color(0xFF00FF41)
+                                "Reparando" -> Color.Cyan
+                                "En Diagnostico" -> Color.Yellow
+                                else -> Color.White
+                            }
+                        )
+                    }
+                }
+                Spacer(Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(ticket.equipoModelo ?: "Equipo en Reparación", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 16.sp)
+                    Text("Estado: ${ticket.estado ?: "Pendiente"}", color = Color.Gray, fontSize = 12.sp)
+                }
+                val costo = ticket.costoEstimado ?: 0.0
+                if (costo > 0) {
+                    Text("S/ ${costo.toInt()}", fontWeight = FontWeight.Black, color = Color.White)
+                }
+            }
+            
+            // MOSTRAR FOTOS DE EVIDENCIA
+            if (!ticket.imagenIngreso.isNullOrEmpty() || !ticket.imagenListo.isNullOrEmpty()) {
+                Row(
+                    modifier = Modifier.padding(top = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    if (!ticket.imagenIngreso.isNullOrEmpty()) {
+                        EvidencePhotoItem("Ingreso", "${BuildConfig.BASE_URL}img/${ticket.imagenIngreso}")
+                    }
+                    if (!ticket.imagenListo.isNullOrEmpty()) {
+                        EvidencePhotoItem("Listo", "${BuildConfig.BASE_URL}img/${ticket.imagenListo}", Color(0xFF00FF41))
+                    }
+                }
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(text, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.LightGray)
+    }
+}
+
+@Composable
+fun EvidencePhotoItem(label: String, url: String, color: Color = ColorGalyRed) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        AsyncImage(
+            model = url,
+            contentDescription = null,
+            modifier = Modifier
+                .size(70.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .border(1.dp, color.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                .background(Color.Black),
+            contentScale = ContentScale.Crop
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(label, fontSize = 9.sp, color = color, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -256,7 +392,7 @@ fun ModernServiceItem(title: String, desc: String, icon: ImageVector, onClick: (
             modifier = Modifier.size(52.dp),
             shape = RoundedCornerShape(14.dp),
             color = Color(0xFF111111),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(icon, null, tint = Color.White, modifier = Modifier.size(24.dp))

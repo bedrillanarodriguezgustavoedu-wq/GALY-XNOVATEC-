@@ -35,6 +35,7 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddressesScreen(
+    alSeleccionar: ((Direccion) -> Unit)? = null,
     alVolver: () -> Unit
 ) {
     val context = LocalContext.current
@@ -57,7 +58,7 @@ fun AddressesScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Mis Direcciones de Entrega", fontWeight = FontWeight.Black, color = Color.White) },
+                title = { Text(if (alSeleccionar != null) "Seleccionar Dirección" else "Mis Direcciones", fontWeight = FontWeight.Black, color = Color.White) },
                 navigationIcon = {
                     IconButton(onClick = alVolver) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver", tint = Color.White)
@@ -163,6 +164,12 @@ fun AddressesScreen(
                             onOpenMap = {
                                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(dir.mapsUrl ?: "geo:0,0?q=${dir.direccion}"))
                                 context.startActivity(intent)
+                            },
+                            onClick = {
+                                if (alSeleccionar != null) {
+                                    alSeleccionar(dir)
+                                    alVolver()
+                                }
                             }
                         )
                     }
@@ -317,9 +324,9 @@ fun AddressesScreen(
 }
 
 @Composable
-fun AddressCardPremium(direccion: Direccion, onOpenMap: () -> Unit) {
+fun AddressCardPremium(direccion: Direccion, onOpenMap: () -> Unit, onClick: () -> Unit = {}) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable { onClick() },
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF111111)),
         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))

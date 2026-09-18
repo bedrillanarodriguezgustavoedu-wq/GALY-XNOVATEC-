@@ -32,6 +32,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.galyxnovatec.tienda.BuildConfig
 import com.galyxnovatec.tienda.R
 import com.galyxnovatec.tienda.data.model.Producto
 import com.galyxnovatec.tienda.data.repository.ProductRepository
@@ -54,8 +55,13 @@ fun EditProductScreen(productId: Int, alVolver: () -> Unit) {
 
     var nombre by remember { mutableStateOf(productoOriginal.nombre) }
     var marca by remember { mutableStateOf(productoOriginal.marca) }
+    var categoria by remember { mutableStateOf(productoOriginal.categoria) }
+    var expandedCat by remember { mutableStateOf(false) }
+    val categories = ProductRepository.obtenerCategorias()
+
     var precioNormal by remember { mutableStateOf(productoOriginal.precioNormal.toString()) }
     var precioOferta by remember { mutableStateOf(productoOriginal.precioOferta.toString()) }
+    var precioCompra by remember { mutableStateOf(productoOriginal.precioCompra.toString()) }
     var stock by remember { mutableStateOf(productoOriginal.stock.toString()) }
     var descripcion by remember { mutableStateOf(productoOriginal.descripcion ?: "") }
     var especificaciones by remember { mutableStateOf(productoOriginal.especificaciones ?: "") }
@@ -206,7 +212,7 @@ fun EditProductScreen(productId: Int, alVolver: () -> Unit) {
                             val url = secondaryUrls[index]
                             Box(modifier = Modifier.size(80.dp)) {
                                 val model = if (url.startsWith("http")) url 
-                                            else "http://10.0.2.2/galy_api/img/${Uri.encode(url)}"
+                                            else "${BuildConfig.BASE_URL}img/${Uri.encode(url)}"
                                 
                                 AsyncImage(
                                     model = model,
@@ -250,13 +256,46 @@ fun EditProductScreen(productId: Int, alVolver: () -> Unit) {
                 colors = textFieldColors()
             )
 
-            OutlinedTextField(
-                value = marca,
-                onValueChange = { marca = it },
-                label = { Text("Marca") },
-                modifier = Modifier.fillMaxWidth(),
-                colors = textFieldColors()
-            )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                OutlinedTextField(
+                    value = marca,
+                    onValueChange = { marca = it },
+                    label = { Text("Marca") },
+                    modifier = Modifier.weight(1f),
+                    colors = textFieldColors()
+                )
+                
+                ExposedDropdownMenuBox(
+                    expanded = expandedCat,
+                    onExpandedChange = { expandedCat = !expandedCat },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    OutlinedTextField(
+                        value = categoria,
+                        onValueChange = { categoria = it },
+                        label = { Text("Categoría") },
+                        modifier = Modifier.menuAnchor(),
+                        readOnly = false,
+                        colors = textFieldColors(),
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedCat) }
+                    )
+                    ExposedDropdownMenu(
+                        expanded = expandedCat,
+                        onDismissRequest = { expandedCat = false },
+                        modifier = Modifier.background(Color(0xFF222222))
+                    ) {
+                        categories.forEach { selectionOption ->
+                            DropdownMenuItem(
+                                text = { Text(selectionOption, color = Color.White) },
+                                onClick = {
+                                    categoria = selectionOption
+                                    expandedCat = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 OutlinedTextField(
@@ -277,14 +316,24 @@ fun EditProductScreen(productId: Int, alVolver: () -> Unit) {
                 )
             }
 
-            OutlinedTextField(
-                value = stock,
-                onValueChange = { stock = it },
-                label = { Text("Stock Actual") },
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                colors = textFieldColors()
-            )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                OutlinedTextField(
+                    value = precioCompra,
+                    onValueChange = { precioCompra = it },
+                    label = { Text("Precio de Compra") },
+                    modifier = Modifier.weight(1f),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors = textFieldColors()
+                )
+                OutlinedTextField(
+                    value = stock,
+                    onValueChange = { stock = it },
+                    label = { Text("Stock Actual") },
+                    modifier = Modifier.weight(1f),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors = textFieldColors()
+                )
+            }
 
             Text("Detalles y Ficha Técnica", color = ColorGalyRed, fontWeight = FontWeight.Bold, fontSize = 14.sp)
 
@@ -318,6 +367,7 @@ fun EditProductScreen(productId: Int, alVolver: () -> Unit) {
                             marca = marca,
                             precioNormal = precioNormal.toDoubleOrNull() ?: 0.0,
                             precioOferta = precioOferta.toDoubleOrNull() ?: 0.0,
+                            precioCompra = precioCompra.toDoubleOrNull() ?: 0.0,
                             descripcion = descripcion,
                             especificaciones = especificaciones,
                             stock = stock.toIntOrNull() ?: 10,

@@ -34,6 +34,7 @@ import com.galyxnovatec.tienda.ui.theme.ColorGalyRed
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OrdersScreen(
+    alVerSeguimiento: (Int) -> Unit,
     alVolver: () -> Unit
 ) {
     val context = LocalContext.current
@@ -70,9 +71,11 @@ fun OrdersScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     items(orders) { order ->
-                        OrderCardPremium(order) {
-                            PdfManager.generarBoleta(context, order)
-                        }
+                        OrderCardPremium(
+                            order = order,
+                            onDownloadPdf = { PdfManager.generarBoleta(context, order) },
+                            onTrack = { alVerSeguimiento(order.id) }
+                        )
                     }
                     item { Spacer(Modifier.height(80.dp)) }
                 }
@@ -82,9 +85,9 @@ fun OrdersScreen(
 }
 
 @Composable
-fun OrderCardPremium(order: Pedido, onDownloadPdf: () -> Unit) {
+fun OrderCardPremium(order: Pedido, onDownloadPdf: () -> Unit, onTrack: () -> Unit) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable { onTrack() },
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF111111)),
         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
@@ -186,9 +189,13 @@ fun OrderCardPremium(order: Pedido, onDownloadPdf: () -> Unit) {
 @Composable
 fun StatusBadge(status: String) {
     val color = when(status.uppercase()) {
-        "PAGADO", "ENTREGADO" -> Color(0xFF00FF41)
+        "PAGADO" -> Color(0xFF00FF41) // Verde flúor
+        "ENTREGADO" -> Color.Cyan
+        "PREPARANDO" -> Color.Yellow
+        "EN CAMINO" -> Color(0xFF17A2B8) // Azul info
+        "PENDIENTE" -> Color(0xFFFFA500) // Naranja
         "CANCELADO" -> Color.Red
-        else -> Color.Yellow
+        else -> Color.Gray
     }
     Surface(
         color = color.copy(alpha = 0.1f),

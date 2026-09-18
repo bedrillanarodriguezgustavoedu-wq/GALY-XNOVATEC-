@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Ajustamos el tamaño a 66dp (zona segura) para evitar que el logo se corte o se vea pequeño -->
+    <!-- Aumentamos el tamaño a 78dp para que resalte más en la pantalla principal -->
     <item
         android:drawable="@drawable/logo_2"
         android:gravity="center"
-        android:width="66dp"
-        android:height="66dp" />
+        android:width="78dp"
+        android:height="78dp" />
 </layer-list>

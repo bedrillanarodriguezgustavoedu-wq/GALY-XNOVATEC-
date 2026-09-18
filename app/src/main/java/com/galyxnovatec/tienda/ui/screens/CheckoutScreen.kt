@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
@@ -33,6 +34,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -44,6 +46,7 @@ import com.galyxnovatec.tienda.data.manager.AuthManager
 import com.galyxnovatec.tienda.data.manager.CartManager
 import com.galyxnovatec.tienda.data.manager.OrderManager
 import com.galyxnovatec.tienda.data.model.Direccion
+import com.galyxnovatec.tienda.data.network.RetrofitClient
 import com.galyxnovatec.tienda.ui.theme.ColorGalyRed
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -53,14 +56,15 @@ import kotlinx.coroutines.launch
 fun CheckoutScreen(
     alVolver: () -> Unit,
     alIrADirecciones: () -> Unit,
+    alIrAPagoWeb: (String) -> Unit,
     alFinalizarCompra: () -> Unit
 ) {
     val context = LocalContext.current
     val user = AuthManager.currentUser
-    val numeroYape = "978104136"
-    var selectedAddress by remember { mutableStateOf(CartManager.direccionSeleccionada) }
+    var metodoEntrega by remember { mutableStateOf("DOMICILIO") } // DOMICILIO o RECOJO
     var metodoSeleccionado by remember { mutableStateOf("YAPE") }
-    var tipoComprobante by remember { mutableStateOf("Boleta") }
+    var usarPuntos by remember { mutableStateOf(false) }
+    var dniRuc by remember { mutableStateOf("") }
     var aceptoTerminos by remember { mutableStateOf(true) }
     var codigoCupon by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
@@ -68,9 +72,12 @@ fun CheckoutScreen(
     LaunchedEffect(Unit) {
         user?.id?.let { 
             AddressManager.fetchAddresses(it)
+            // Sincronizar Carrito al entrar
+            CartManager.sincronizarConServidor(context)
+            
             if (AddressManager.addresses.isNotEmpty() && CartManager.direccionSeleccionada == null) {
-                selectedAddress = AddressManager.addresses.first()
-                CartManager.direccionSeleccionada = selectedAddress
+                // Elegimos la dirección por defecto (la primera o principal)
+                CartManager.direccionSeleccionada = AddressManager.addresses.first()
             }
         }
     }
@@ -135,7 +142,7 @@ fun CheckoutScreen(
                 }
             }
 
-            // SECCIÓN DIRECCIÓN
+            // SECCIÓN MÉTODO DE ENTREGA
             Surface(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 color = Color(0xFF111111),
@@ -143,38 +150,93 @@ fun CheckoutScreen(
                 border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(modifier = Modifier.size(36.dp), shape = CircleShape, color = Color(0xFF6200EE).copy(alpha = 0.2f)) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.LocationOn, null, tint = Color(0xFFBB86FC), modifier = Modifier.size(20.dp))
-                            }
-                        }
-                        Spacer(Modifier.width(16.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Dirección de entrega", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                            Text(user?.nombre ?: "Cliente GALY", color = Color.Gray, fontSize = 13.sp)
-                            Text(CartManager.direccionSeleccionada?.direccion ?: user?.direccion ?: "Añadir dirección", color = Color.Gray, fontSize = 13.sp)
-                        }
-                        TextButton(onClick = alIrADirecciones) {
-                            Text("Cambiar >", color = Color(0xFFBB86FC), fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        }
-                    }
+                    Text("¿Cómo quieres recibir tu pedido?", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     Spacer(Modifier.height(16.dp))
-                    Button(
-                        onClick = alIrADirecciones,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                        border = BorderStroke(1.dp, Color(0xFFBB86FC)),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(Icons.Default.Add, null, tint = Color(0xFFBB86FC))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Agregar nueva dirección", color = Color(0xFFBB86FC), fontWeight = FontWeight.Bold)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        DeliveryOptionCard(
+                            title = "Domicilio",
+                            icon = Icons.Default.Home,
+                            isSelected = metodoEntrega == "DOMICILIO",
+                            modifier = Modifier.weight(1f)
+                        ) { metodoEntrega = "DOMICILIO" }
+                        
+                        DeliveryOptionCard(
+                            title = "Tienda",
+                            icon = Icons.Default.Storefront,
+                            isSelected = metodoEntrega == "RECOJO",
+                            modifier = Modifier.weight(1f)
+                        ) { metodoEntrega = "RECOJO" }
                     }
                 }
             }
 
             Spacer(Modifier.height(16.dp))
+
+            // SECCIÓN DIRECCIÓN (SÓLO SI ES DOMICILIO)
+            if (metodoEntrega == "DOMICILIO") {
+                Surface(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    color = Color(0xFF111111),
+                    shape = RoundedCornerShape(20.dp),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+                ) {
+                    Column(modifier = Modifier.padding(20.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(modifier = Modifier.size(36.dp), shape = CircleShape, color = Color(0xFF6200EE).copy(alpha = 0.2f)) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Default.LocationOn, null, tint = Color(0xFFBB86FC), modifier = Modifier.size(20.dp))
+                                }
+                            }
+                            Spacer(Modifier.width(16.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Dirección de entrega", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                Text(user?.nombre ?: "Cliente GALY", color = Color.Gray, fontSize = 13.sp)
+                                val currentDir = CartManager.direccionSeleccionada
+                                Text(
+                                    text = if (currentDir != null) "${currentDir.direccion}, ${currentDir.ciudad}" else "Añadir dirección",
+                                    color = Color.Gray,
+                                    fontSize = 13.sp
+                                )
+                            }
+                            TextButton(onClick = alIrADirecciones) {
+                                Text("Cambiar >", color = Color(0xFFBB86FC), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            }
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        Button(
+                            onClick = alIrADirecciones,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                            border = BorderStroke(1.dp, Color(0xFFBB86FC)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.Add, null, tint = Color(0xFFBB86FC))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Agregar nueva dirección", color = Color(0xFFBB86FC), fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+            } else {
+                // INFO DE RECOJO EN TIENDA
+                Surface(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    color = Color(0xFF111111),
+                    shape = RoundedCornerShape(20.dp),
+                    border = BorderStroke(1.dp, ColorGalyRed.copy(alpha = 0.2f))
+                ) {
+                    Row(modifier = Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Storefront, null, tint = ColorGalyRed, modifier = Modifier.size(24.dp))
+                        Spacer(Modifier.width(16.dp))
+                        Column {
+                            Text("Recojo en Sede Central", color = Color.White, fontWeight = FontWeight.Bold)
+                            Text("Av. Principal 123, Lima", color = Color.Gray, fontSize = 12.sp)
+                            Text("Horario: 9am - 8pm", color = ColorGalyRed, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+            }
 
             // SECCIÓN ENVÍO
             Surface(
@@ -200,6 +262,64 @@ fun CheckoutScreen(
 
             Spacer(Modifier.height(16.dp))
 
+            // SECCIÓN PUNTOS GALY (NUEVO)
+            if ((user?.puntos ?: 0) > 0) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    color = Color(0xFF1A1A00),
+                    shape = RoundedCornerShape(20.dp),
+                    border = BorderStroke(1.dp, Color.Yellow.copy(alpha = 0.2f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Stars, null, tint = Color.Yellow, modifier = Modifier.size(24.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Puntos Galy", color = Color.White, fontWeight = FontWeight.Bold)
+                            Text("Tienes ${user?.puntos} puntos disponibles", color = Color.Yellow, fontSize = 12.sp)
+                        }
+                        Switch(
+                            checked = usarPuntos,
+                            onCheckedChange = { usarPuntos = it },
+                            colors = SwitchDefaults.colors(checkedThumbColor = Color.Yellow, checkedTrackColor = Color.Yellow.copy(alpha = 0.5f))
+                        )
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+            }
+
+            // SECCIÓN DATOS DE FACTURACIÓN
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                color = Color(0xFF111111),
+                shape = RoundedCornerShape(20.dp),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Text("Datos de facturación", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Spacer(Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = dniRuc,
+                        onValueChange = { if (it.length <= 11) dniRuc = it },
+                        label = { Text("DNI o RUC para tu boleta") },
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = ColorGalyRed,
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.1f)
+                        ),
+                        singleLine = true
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
             // MÉTODOS DE PAGO
             Surface(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -210,9 +330,12 @@ fun CheckoutScreen(
                     Text("Métodos de pago", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     Spacer(Modifier.height(20.dp))
                     
+                    PaymentRow("Yape", "Pago rápido con QR", listOf(R.drawable.yape), metodoSeleccionado == "YAPE") { metodoSeleccionado = "YAPE" }
+                    PaymentRow("Plin", "Transferencia inmediata", listOf(R.drawable.images2), metodoSeleccionado == "PLIN") { metodoSeleccionado = "PLIN" }
+                    PaymentRow("BCP / Transferencia", "Banca por internet", listOf(R.drawable.bsp), metodoSeleccionado == "BCP") { metodoSeleccionado = "BCP" }
+                    PaymentRow("BBVA / Interbank", "Otras cuentas", listOf(R.drawable.interbnack), metodoSeleccionado == "OTHER_BANK") { metodoSeleccionado = "OTHER_BANK" }
+                    PaymentRow("Banco de la Nación", "Cuenta corriente", listOf(R.drawable.bancodelanancion), metodoSeleccionado == "BN") { metodoSeleccionado = "BN" }
                     PaymentRow("Tarjeta de Crédito/Débito", "Visa, Mastercard", listOf(R.drawable.logo_2), metodoSeleccionado == "CARD") { metodoSeleccionado = "CARD" }
-                    PaymentRow("Yape / Plin", "Paga rápido y seguro", listOf(R.drawable.yape), metodoSeleccionado == "YAPE") { metodoSeleccionado = "YAPE" }
-                    PaymentRow("Transferencia", "BCP / BBVA / Otros", emptyList(), metodoSeleccionado == "BANK") { metodoSeleccionado = "BANK" }
                     PaymentRow("Pago contra entrega", "Efectivo al recibir", emptyList(), metodoSeleccionado == "CASH") { metodoSeleccionado = "CASH" }
                 }
             }
@@ -274,11 +397,17 @@ fun CheckoutScreen(
                     if (CartManager.descuentoPorCupon > 0) {
                         CostRow("Descuento Cupón", "- S/ ${CartManager.descuentoPorCupon.toInt()}", color = ColorGalyRed)
                     }
+                    if (usarPuntos) {
+                        val descuentoPuntos = user?.puntos ?: 0
+                        CostRow("Puntos Galy", "- S/ $descuentoPuntos", color = Color.Yellow)
+                    }
+                    CostRow("Entrega", if (metodoEntrega == "DOMICILIO") "Domicilio" else "Tienda")
                     CostRow("Envío", "GRATIS", color = Color(0xFF00FF41))
                     HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Color.White.copy(alpha = 0.1f))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Total a pagar", fontWeight = FontWeight.Black, fontSize = 18.sp, color = Color.White)
-                        Text("S/ ${CartManager.obtenerTotal().toInt()}", fontWeight = FontWeight.Black, fontSize = 22.sp, color = ColorGalyRed)
+                        val totalFinal = CartManager.obtenerTotal(if(usarPuntos) (user?.puntos ?: 0) else 0)
+                        Text("S/ ${totalFinal.toInt()}", fontWeight = FontWeight.Black, fontSize = 22.sp, color = ColorGalyRed)
                     }
                 }
             }
@@ -289,56 +418,97 @@ fun CheckoutScreen(
                 Text("Acepto los términos y política de privacidad.", color = Color.Gray, fontSize = 12.sp)
             }
 
-    // BOTÓN PAGAR GIGANTE Y FUNCIONAL
     Button(
         onClick = { 
             scope.launch {
-                val totalFinal = CartManager.obtenerTotal()
+                val itemsAComprar = CartManager.items.filter { it.isSelected }
+                val totalFinal = CartManager.obtenerTotal(if(usarPuntos) (user?.puntos ?: 0) else 0)
                 val result = OrderManager.placeOrder(
                     userId = user?.id, 
-                    items = CartManager.items, 
+                    items = itemsAComprar, 
                     total = totalFinal,
                     metodoPago = metodoSeleccionado,
-                    direccion = CartManager.direccionSeleccionada
+                    metodoEntrega = metodoEntrega,
+                    direccion = if (metodoEntrega == "DOMICILIO") CartManager.direccionSeleccionada else null,
+                    dni = dniRuc
                 )
                 
                 if (result == true) {
-                    val phoneGaly = "51978104136" // Formato internacional
+                    // Si usó puntos, debemos descontarlos de su cuenta en la DB
+                    if (usarPuntos) {
+                        AuthManager.currentUser = AuthManager.currentUser?.let { 
+                            it.copy(puntos = 0) 
+                        }
+                    }
+                    val phoneGaly = "51978104136"
+                    val payNumber = "978104136"
                     val mensaje = CartManager.generarMensajeWhatsApp(CartManager.direccionSeleccionada)
+                    
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("GALY Pay", payNumber))
+
+                    fun abrirAppOPlayStore(packageName: String) {
+                        val intent = context.packageManager.getLaunchIntentForPackage(packageName)
+                        if (intent != null) {
+                            context.startActivity(intent)
+                        } else {
+                            try {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$packageName")))
+                            } catch (e: Exception) {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$packageName")))
+                            }
+                        }
+                    }
                     
                     when (metodoSeleccionado) {
                         "YAPE" -> {
-                            // 1. Copiar número al portapapeles
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText("Yape GALY", "978104136"))
-                            Toast.makeText(context, "✅ Número 978104136 copiado. ¡Abre Yape para pagar!", Toast.LENGTH_LONG).show()
-                            
-                            // 2. Intentar abrir Yape
-                            val intentYape = context.packageManager.getLaunchIntentForPackage("com.bcp.innovabcp.yape")
-                            if (intentYape != null) {
-                                context.startActivity(intentYape)
-                            } else {
-                                // Si no tiene Yape, abrir WhatsApp para coordinar
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$phoneGaly?text=${Uri.encode(mensaje)}")))
-                            }
+                            Toast.makeText(context, "✅ Número $payNumber copiado. ¡Abriendo Yape!", Toast.LENGTH_LONG).show()
+                            abrirAppOPlayStore("com.bcp.innovabcp.yape")
+                        }
+                        "PLIN" -> {
+                            Toast.makeText(context, "✅ Número $payNumber copiado. ¡Abriendo Interbank (Plin)!", Toast.LENGTH_LONG).show()
+                            abrirAppOPlayStore("com.interbank.mobilebanking")
+                        }
+                        "BCP" -> {
+                            Toast.makeText(context, "✅ Número $payNumber copiado. ¡Abriendo Banca Móvil BCP!", Toast.LENGTH_LONG).show()
+                            abrirAppOPlayStore("com.bcp.bank.mobile")
+                        }
+                        "OTHER_BANK" -> {
+                            Toast.makeText(context, "✅ Número $payNumber copiado. ¡Abriendo BBVA/Interbank!", Toast.LENGTH_LONG).show()
+                            abrirAppOPlayStore("com.bbva.bbvacontigo")
+                        }
+                        "BN" -> {
+                            Toast.makeText(context, "✅ Número $payNumber copiado. ¡Abriendo Banco de la Nación!", Toast.LENGTH_LONG).show()
+                            abrirAppOPlayStore("pe.com.bn.bnmovil")
                         }
                         "CARD" -> {
-                            // Para tarjeta, abrimos WhatsApp para que el admin envíe el link de pago (Niubiz/Izipay)
-                            val msgCard = "Hola GALY, deseo pagar con Tarjeta mi pedido de S/ ${totalFinal.toInt()}. ¿Me envían el link?"
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$phoneGaly?text=${Uri.encode(msgCard)}")))
-                        }
-                        "BANK" -> {
-                            // Para transferencia, enviamos el detalle por WhatsApp
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$phoneGaly?text=${Uri.encode(mensaje)}")))
+                            scope.launch {
+                                try {
+                                    val dataMp: Map<String, Any> = mapOf(
+                                        "pedido_id" to 0, 
+                                        "total" to totalFinal,
+                                        "items" to itemsAComprar.map { mapOf("nombre" to it.producto.nombre, "cantidad" to it.cantidad, "precio" to it.producto.precioOferta) }
+                                    )
+                                    val responseMp = RetrofitClient.instance.getMpPreference(dataMp)
+                                    if (responseMp["success"] == true) {
+                                        val initPoint = responseMp["init_point"] as String
+                                        alIrAPagoWeb(initPoint)
+                                    } else {
+                                        Toast.makeText(context, "Error en pasarela: ${responseMp["message"]}", Toast.LENGTH_LONG).show()
+                                    }
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Error al conectar con Mercado Pago", Toast.LENGTH_LONG).show()
+                                }
+                            }
                         }
                         else -> {
-                            // Pago contra entrega o cualquier otro
                             Toast.makeText(context, "📦 Pedido registrado. Nos contactaremos pronto.", Toast.LENGTH_LONG).show()
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$phoneGaly?text=${Uri.encode(mensaje)}")))
                         }
                     }
                     
                     delay(500)
-                    CartManager.limpiarCarrito()
+                    CartManager.eliminarItemsSeleccionados(context)
                     alFinalizarCompra()
                 } else {
                     val errorMsg = if (result is String) result else "Error al procesar el pedido"
@@ -357,7 +527,8 @@ fun CheckoutScreen(
                 if (OrderManager.isLoading) {
                     CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
                 } else {
-                    Text("PAGAR S/ ${CartManager.obtenerTotal().toInt()}", fontWeight = FontWeight.Black, fontSize = 18.sp)
+                    val totalFinal = CartManager.obtenerTotal(if(usarPuntos) (user?.puntos ?: 0) else 0)
+                    Text("PAGAR S/ ${totalFinal.toInt()}", fontWeight = FontWeight.Black, fontSize = 18.sp)
                 }
             }
             
@@ -389,5 +560,41 @@ fun CostRow(label: String, value: String, color: Color = Color.Gray) {
     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.SpaceBetween) {
         Text(label, color = Color.Gray, fontSize = 14.sp)
         Text(value, color = color, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+fun DeliveryOptionCard(
+    title: String,
+    icon: ImageVector,
+    isSelected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = modifier.clickable { onClick() },
+        color = if (isSelected) ColorGalyRed.copy(alpha = 0.1f) else Color.White.copy(alpha = 0.05f),
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, if (isSelected) ColorGalyRed else Color.Transparent)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (isSelected) ColorGalyRed else Color.Gray,
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = title,
+                color = if (isSelected) Color.White else Color.Gray,
+                fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold,
+                fontSize = 12.sp
+            )
+        }
     }
 }

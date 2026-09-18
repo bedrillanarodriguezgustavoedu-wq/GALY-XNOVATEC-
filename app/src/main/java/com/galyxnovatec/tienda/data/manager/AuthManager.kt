@@ -1,5 +1,6 @@
 package com.galyxnovatec.tienda.data.manager
 
+import android.content.Context
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -7,27 +8,23 @@ import androidx.compose.runtime.setValue
 import com.galyxnovatec.tienda.BuildConfig
 import com.galyxnovatec.tienda.data.model.User
 import com.galyxnovatec.tienda.data.network.RetrofitClient
-
+import com.google.firebase.messaging.FirebaseMessaging
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 object AuthManager {
     var currentUser by mutableStateOf<User?>(null)
     var isLoading by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
 
-    // private val auth = FirebaseAuth.getInstance() // Desactivado momentáneamente
-
     suspend fun login(email: String, clave: String): Boolean {
         isLoading = true
         error = null
-        
         val cleanEmail = email.trim().lowercase()
         val cleanClave = clave.trim()
         
-        Log.d("GALY_AUTH", "Intentando login: '$cleanEmail' con '$cleanClave'")
-
-        // --- LLAVE MAESTRA CORPORATIVA GALY XNOVATEC ---
         if (cleanEmail == BuildConfig.ADMIN_EMAIL && cleanClave == BuildConfig.ADMIN_PASSWORD) {
-            Log.d("GALY_AUTH", "Llave maestra aceptada")
             currentUser = User(
                 id = 1, 
                 nombre = "Administrador Maestro", 
@@ -37,15 +34,16 @@ object AuthManager {
                 imagenUrl = null,
                 esAdmin = true
             )
+            vincularTokenFCM()
             isLoading = false
             return true
         }
 
         return try {
-            // 2. Intentar conexión normal con XAMPP
             val response = RetrofitClient.instance.login(mapOf("email" to cleanEmail, "password" to cleanClave))
             if (response.success) {
                 currentUser = response.user
+                vincularTokenFCM()
                 true
             } else {
                 error = response.message
@@ -68,6 +66,7 @@ object AuthManager {
             )
             if (response.success) {
                 currentUser = response.user
+                vincularTokenFCM()
                 true
             } else {
                 error = response.message
@@ -81,26 +80,42 @@ object AuthManager {
         }
     }
 
-    fun logout() {
+    private fun vincularTokenFCM() {
+        try {
+            FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    val token = task.result
+                    val userId = currentUser?.id ?: return@addOnCompleteListener
+                    CoroutineScope(Dispatchers.IO).launch {
+                        try {
+                            RetrofitClient.instance.registerFcmToken(mapOf("usuario_id" to userId, "token" to token))
+                        } catch (e: Exception) {}
+                    }
+                }
+            }
+        } catch (e: Exception) {}
+    }
+
+    fun logout(context: Context) {
         currentUser = null
-        CartManager.limpiarCarrito()
+        CartManager.limpiarCarrito(context)
     }
 
     suspend fun loginConGoogle(idToken: String, nombre: String, email: String): Boolean {
         isLoading = true
         error = null
         return try {
-            // Enviamos los datos reales de Google a tu base de datos
             val response = RetrofitClient.instance.login(
                 mapOf(
                     "email" to email, 
-                    "password" to "GOOGLE_AUTH", // Password especial para saber que es de Google
+                    "password" to "GOOGLE_AUTH", 
                     "nombre" to nombre,
                     "id_token" to idToken
                 )
             )
             if (response.success) {
                 currentUser = response.user
+                vincularTokenFCM()
                 true
             } else {
                 error = response.message
@@ -123,6 +138,7 @@ object AuthManager {
             direccion = "Conexión vía Google",
             imagenUrl = null
         )
+        vincularTokenFCM()
     }
 
     suspend fun updateProfile(nombre: String?, telefono: String?, direccion: String?, password: String?): String? {
@@ -137,7 +153,6 @@ object AuthManager {
 
             val response = RetrofitClient.instance.updateUsuario(data)
             if (response["success"] == true) {
-                // Actualizar currentUser con la respuesta (que viene como Map)
                 val userMap = response["user"] as? Map<*, *>
                 if (userMap != null) {
                     currentUser = User(
@@ -147,10 +162,11 @@ object AuthManager {
                         telefono = userMap["telefono"] as? String,
                         direccion = userMap["direccion"] as? String,
                         imagenUrl = userMap["imagen_url"] as? String,
-                        esAdmin = userMap["es_admin"] as? Boolean ?: false
+                        esAdmin = userMap["es_admin"] as? Boolean ?: false,
+                        puntos = (userMap["puntos"] as? Double)?.toInt() ?: 0
                     )
                 }
-                null // Sin error
+                null
             } else {
                 response["message"] as? String ?: "Error desconocido"
             }

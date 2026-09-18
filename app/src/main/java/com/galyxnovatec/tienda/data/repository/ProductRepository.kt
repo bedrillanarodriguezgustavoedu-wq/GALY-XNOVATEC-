@@ -4,12 +4,18 @@ import android.content.Context
 import android.net.Uri
 import android.util.Log
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import com.galyxnovatec.tienda.R
 import com.galyxnovatec.tienda.data.model.*
 import com.galyxnovatec.tienda.data.network.RetrofitClient
 import com.google.gson.Gson
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
@@ -26,6 +32,7 @@ object ProductRepository {
     val banners = mutableStateListOf<Banner>()
     val servicios = mutableStateListOf<ServicioTecnico>()
     
+    var isLoading by mutableStateOf(false)
     var ultimoError: String? = null
     private const val PREFS_NAME = "galy_cache"
     private const val KEY_PRODUCTS = "cached_products"
@@ -36,21 +43,27 @@ object ProductRepository {
     }
 
     fun cargarCache(context: Context) {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val json = prefs.getString(KEY_PRODUCTS, null)
-        if (json != null) {
-            try {
-                val cached = Gson().fromJson(json, Array<Producto>::class.java).toList()
-                if (productos.any { it.id == -1 }) productos.clear()
-                productos.addAll(cached)
-            } catch (e: Exception) { }
+        CoroutineScope(Dispatchers.IO).launch {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val json = prefs.getString(KEY_PRODUCTS, null)
+            if (json != null) {
+                try {
+                    val cached = Gson().fromJson(json, Array<Producto>::class.java).toList()
+                    withContext(Dispatchers.Main) {
+                        if (productos.any { it.id == -1 }) productos.clear()
+                        productos.addAll(cached)
+                    }
+                } catch (e: Exception) { }
+            }
         }
     }
 
     private fun guardarCache(context: Context) {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val json = Gson().toJson(productos.filter { it.id != -1 })
-        prefs.edit().putString(KEY_PRODUCTS, json).apply()
+        CoroutineScope(Dispatchers.IO).launch {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val json = Gson().toJson(productos.filter { it.id != -1 })
+            prefs.edit().putString(KEY_PRODUCTS, json).apply()
+        }
     }
 
     /** Convierte una Uri de Android a un archivo temporal para subirlo */
@@ -102,6 +115,7 @@ object ProductRepository {
         marca: String,
         precioNormal: Double,
         precioOferta: Double,
+        precioCompra: Double,
         descripcion: String,
         especificaciones: String,
         stock: Int,
@@ -115,6 +129,7 @@ object ProductRepository {
                 "marca" to marca,
                 "precio_normal" to precioNormal,
                 "precio_oferta" to precioOferta,
+                "precio_compra" to precioCompra,
                 "descripcion" to descripcion,
                 "especificaciones" to especificaciones,
                 "stock" to stock
@@ -186,6 +201,8 @@ object ProductRepository {
 
     /** Sincroniza todos los datos desde el servidor XAMPP de forma paralela */
     suspend fun sincronizarTodo(context: Context? = null): Boolean {
+        if (isLoading) return false
+        isLoading = true
         ultimoError = null
         var exitoGlobal = false
         
@@ -233,6 +250,8 @@ object ProductRepository {
         } catch (e: Exception) {
             ultimoError = e.message
             false
+        } finally {
+            isLoading = false
         }
     }
 
@@ -242,8 +261,16 @@ object ProductRepository {
     
     fun buscar(texto: String): List<Producto> {
         val busqueda = texto.trim().lowercase()
-        return if (busqueda.isEmpty()) productos
-        else productos.filter { it.nombre.lowercase().contains(busqueda) || it.marca.lowercase().contains(busqueda) }
+        if (busqueda.isEmpty()) return productos
+        
+        return productos.filter { 
+            it.nombre.lowercase().contains(busqueda) || 
+            it.marca.lowercase().contains(busqueda) ||
+            it.categoria.lowercase().contains(busqueda) ||
+            it.descripcion?.lowercase()?.contains(busqueda) == true ||
+            it.especificaciones?.lowercase()?.contains(busqueda) == true ||
+            it.variantes?.lowercase()?.contains(busqueda) == true
+        }
     }
 
     /** Obtiene los nombres de las categorías con fallback si no hay conexión */

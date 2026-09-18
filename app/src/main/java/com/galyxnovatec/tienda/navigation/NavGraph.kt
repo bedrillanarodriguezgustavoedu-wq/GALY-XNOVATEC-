@@ -8,7 +8,11 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.galyxnovatec.tienda.data.manager.AuthManager
 import com.galyxnovatec.tienda.data.manager.CartManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import com.galyxnovatec.tienda.data.repository.ProductRepository
 import com.galyxnovatec.tienda.ui.screens.*
 
@@ -45,8 +49,12 @@ fun GalyNavGraph(navController: NavHostController) {
         }
 
         composable(Screen.Register.route) {
+            val context = LocalContext.current
             RegisterScreen(
                 onRegisterSuccess = {
+                    CoroutineScope(Dispatchers.Main).launch {
+                        CartManager.sincronizarConServidor(context)
+                    }
                     navController.navigate(Screen.Home.route) {
                         popUpTo(Screen.Register.route) { inclusive = true }
                     }
@@ -97,17 +105,23 @@ fun GalyNavGraph(navController: NavHostController) {
             route = Screen.Detail.route,
             arguments = listOf(navArgument("productId") { type = NavType.IntType }),
         ) { backStackEntry ->
+            val context = LocalContext.current
             val productId = backStackEntry.arguments?.getInt("productId")
             productId?.let { ProductRepository.obtenerPorId(it) }?.let { producto ->
                 DetailScreen(
                     producto = producto,
                     alVolver = { navController.popBackStack() },
+                    alIrAlCarrito = { navController.navigate(Screen.Cart.route) },
                     alAgregarAlCarrito = { p, cant ->
-                        CartManager.agregarProducto(p, cant)
+                        CartManager.agregarProducto(context, p, cant)
                     },
                     alComprarAhora = { p, cant ->
-                        CartManager.agregarProducto(p, cant)
-                        navController.navigate(Screen.Checkout.route)
+                        CartManager.agregarProducto(context, p, cant)
+                        if (AuthManager.currentUser == null) {
+                            navController.navigate(Screen.Login.route)
+                        } else {
+                            navController.navigate(Screen.Checkout.route)
+                        }
                     },
                     alSeleccionarProductoRelacionado = { rel ->
                         navController.navigate(Screen.Detail.createRoute(rel.id))
@@ -120,7 +134,12 @@ fun GalyNavGraph(navController: NavHostController) {
             CartScreen(
                 alVolver = { navController.popBackStack() },
                 alIrACheckout = {
-                    navController.navigate(Screen.Checkout.route)
+                    if (AuthManager.currentUser == null) {
+                        // Si no está logueado, ir a login pero recordar que venía del carrito
+                        navController.navigate(Screen.Login.route)
+                    } else {
+                        navController.navigate(Screen.Checkout.route)
+                    }
                 },
             )
         }
@@ -129,6 +148,7 @@ fun GalyNavGraph(navController: NavHostController) {
             CheckoutScreen(
                 alVolver = { navController.popBackStack() },
                 alIrADirecciones = { navController.navigate(Screen.Addresses.route) },
+                alIrAPagoWeb = { url -> navController.navigate(Screen.PaymentWebView.createRoute(url)) },
                 alFinalizarCompra = {
                     navController.navigate(Screen.Success.route) {
                         popUpTo(Screen.Home.route) { inclusive = false }
@@ -190,6 +210,10 @@ fun GalyNavGraph(navController: NavHostController) {
         
         composable(Screen.Addresses.route) {
             AddressesScreen(
+                alSeleccionar = { dir ->
+                    CartManager.direccionSeleccionada = dir
+                    navController.popBackStack()
+                },
                 alVolver = { navController.popBackStack() },
             )
         }
@@ -207,6 +231,9 @@ fun GalyNavGraph(navController: NavHostController) {
         
         composable(Screen.Orders.route) {
             OrdersScreen(
+                alVerSeguimiento = { orderId ->
+                    navController.navigate(Screen.Tracking.createRoute(orderId))
+                },
                 alVolver = { navController.popBackStack() },
             )
         }
@@ -227,9 +254,24 @@ fun GalyNavGraph(navController: NavHostController) {
                 alIrAPedidos = { navController.navigate(Screen.AdminOrders.route) },
                 alIrABanners = { navController.navigate(Screen.AdminBanners.route) },
                 alIrAUsuarios = { navController.navigate(Screen.AdminUsers.route) },
+                alIrACupones = { navController.navigate(Screen.AdminCoupons.route) },
+                alIrANotificaciones = { navController.navigate(Screen.AdminNotifications.route) },
                 alIrAGestionarCategorias = { navController.navigate(Screen.AdminCategories.route) },
-                alIrAGestionarProductos = { navController.navigate(Screen.AdminProducts.route) }
+                alIrAGestionarProductos = { navController.navigate(Screen.AdminProducts.route) },
+                alIrAGestionarTickets = { navController.navigate(Screen.AdminTickets.route) }
             )
+        }
+
+        composable(Screen.AdminCoupons.route) {
+            AdminCouponsScreen(alVolver = { navController.popBackStack() })
+        }
+
+        composable(Screen.AdminNotifications.route) {
+            AdminNotificationsScreen(alVolver = { navController.popBackStack() })
+        }
+
+        composable(Screen.AdminTickets.route) {
+            AdminTicketsScreen(alVolver = { navController.popBackStack() })
         }
 
         composable(Screen.AdminProducts.route) {
@@ -257,7 +299,12 @@ fun GalyNavGraph(navController: NavHostController) {
         }
 
         composable(Screen.AiChat.route) {
-            GalyAiChatScreen(alVolver = { navController.popBackStack() })
+            GalyAiChatScreen(
+                alVolver = { navController.popBackStack() },
+                alSeleccionarProducto = { productId ->
+                    navController.navigate(Screen.Detail.createRoute(productId))
+                }
+            )
         }
 
         composable(Screen.AdminBanners.route) {
@@ -280,6 +327,37 @@ fun GalyNavGraph(navController: NavHostController) {
 
         composable(Screen.AdminOrders.route) {
             AdminOrdersScreen(alVolver = { navController.popBackStack() })
+        }
+
+        composable(
+            route = Screen.Tracking.route,
+            arguments = listOf(navArgument("orderId") { type = NavType.IntType })
+        ) { backStackEntry ->
+            val orderId = backStackEntry.arguments?.getInt("orderId") ?: -1
+            TrackingScreen(
+                orderId = orderId,
+                alVolver = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = Screen.PaymentWebView.route,
+            arguments = listOf(navArgument("url") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val url = backStackEntry.arguments?.getString("url") ?: ""
+            PaymentWebViewScreen(
+                url = url,
+                onSuccess = {
+                    navController.navigate(Screen.Success.route) {
+                        popUpTo(Screen.Home.route) { inclusive = false }
+                    }
+                },
+                onFailure = {
+                    Toast.makeText(navController.context, "El pago no pudo completarse", Toast.LENGTH_LONG).show()
+                    navController.popBackStack()
+                },
+                onBack = { navController.popBackStack() }
+            )
         }
         
         composable(Screen.Success.route) {

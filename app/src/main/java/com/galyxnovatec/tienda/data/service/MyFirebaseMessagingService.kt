@@ -6,17 +6,23 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.galyxnovatec.tienda.MainActivity
 import com.galyxnovatec.tienda.R
+import com.galyxnovatec.tienda.data.manager.AuthManager
+import com.galyxnovatec.tienda.data.network.RetrofitClient
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class MyFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
         remoteMessage.notification?.let {
-            sendNotification(it.title ?: "GALY XNOVATEC", it.body ?: "")
+            sendNotification(it.title ?: "GALY STORE", it.body ?: "")
         }
     }
 
@@ -39,14 +45,27 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(channelId,
                 "Notificaciones de GALY",
-                NotificationManager.IMPORTANCE_DEFAULT)
+                NotificationManager.IMPORTANCE_HIGH)
             notificationManager.createNotificationChannel(channel)
         }
 
-        notificationManager.notify(0, notificationBuilder.build())
+        notificationManager.notify(System.currentTimeMillis().toInt(), notificationBuilder.build())
     }
 
     override fun onNewToken(token: String) {
-        // Enviar token al servidor si es necesario para notificaciones segmentadas
+        Log.d("GALY_FCM", "Nuevo Token: $token")
+        enviarTokenAlServidor(token)
+    }
+
+    private fun enviarTokenAlServidor(token: String) {
+        val userId = AuthManager.currentUser?.id ?: return
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                RetrofitClient.instance.registerFcmToken(mapOf("usuario_id" to userId, "token" to token))
+                Log.d("GALY_FCM", "Token registrado en el servidor para usuario #$userId")
+            } catch (e: Exception) {
+                Log.e("GALY_FCM", "Error registrando token: ${e.message}")
+            }
+        }
     }
 }

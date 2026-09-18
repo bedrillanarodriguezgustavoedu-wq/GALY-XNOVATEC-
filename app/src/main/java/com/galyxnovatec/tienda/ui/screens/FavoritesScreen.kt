@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.galyxnovatec.tienda.data.manager.FavoriteManager
@@ -33,6 +34,7 @@ fun FavoritesScreen(
     alSeleccionarProducto: (Producto) -> Unit,
     alVolver: () -> Unit
 ) {
+    val context = LocalContext.current
     val items = FavoriteManager.items
 
     Scaffold(
@@ -92,7 +94,7 @@ fun FavoritesScreen(
                     TarjetaProducto(
                         producto = producto,
                         alHacerClick = { alSeleccionarProducto(producto) },
-                        alAgregarRapido = { CartManager.agregarProducto(producto, 1) }
+                        alAgregarRapido = { CartManager.agregarProducto(context, producto, 1) }
                     )
                 }
             }

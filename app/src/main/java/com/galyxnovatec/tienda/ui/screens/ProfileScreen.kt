@@ -219,18 +219,44 @@ fun ProfileScreen(
                             fontWeight = FontWeight.Black,
                             color = Color.White
                         )
-                        Text(
-                            text = user?.email ?: "cliente@galy.com",
-                            fontSize = 14.sp,
-                            color = Color.White.copy(alpha = 0.6f)
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Stars, null, tint = Color.Yellow, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = "${user?.puntos ?: 0} Puntos Galy",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.Yellow
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            // BADGE DE NIVEL
+                            val nivel = user?.getNivelNombre() ?: "BRONCE"
+                            val nivelColor = when(nivel) {
+                                "ORO" -> Color(0xFFFFD700)
+                                "PLATA" -> Color(0xFFC0C0C0)
+                                else -> Color(0xFFCD7F32)
+                            }
+                            Surface(
+                                color = nivelColor.copy(alpha = 0.2f),
+                                shape = RoundedCornerShape(4.dp),
+                                border = BorderStroke(1.dp, nivelColor)
+                            ) {
+                                Text(
+                                    nivel,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = nivelColor,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
                         Surface(
                             modifier = Modifier.padding(top = 8.dp),
                             color = ColorGalyRed,
                             shape = RoundedCornerShape(4.dp)
                         ) {
                             Text(
-                                "MIEMBRO PREMIUM",
+                                if(user?.esAdmin == true) "ADMINISTRADOR MAESTRO" else "MIEMBRO PREMIUM",
                                 fontSize = 8.sp,
                                 fontWeight = FontWeight.Black,
                                 color = Color.White,
@@ -341,7 +367,7 @@ fun ProfileScreen(
                 Button(
                     onClick = {
                         mostrarDialogoConfirmacion = false
-                        AuthManager.logout()
+                        AuthManager.logout(context)
                         alCerrarSesion()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color.Black),

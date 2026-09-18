@@ -44,6 +44,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.galyxnovatec.tienda.R
 import com.galyxnovatec.tienda.data.manager.AuthManager
 import com.galyxnovatec.tienda.data.manager.FavoriteManager
@@ -60,6 +61,7 @@ import kotlinx.coroutines.launch
 fun DetailScreen(
     producto: Producto,
     alVolver: () -> Unit,
+    alIrAlCarrito: () -> Unit,
     alAgregarAlCarrito: (Producto, Int) -> Unit,
     alComprarAhora: (Producto, Int) -> Unit,
     alSeleccionarProductoRelacionado: (Producto) -> Unit
@@ -140,7 +142,20 @@ fun DetailScreen(
                     }
                     
                     IconButton(
-                        onClick = { alAgregarAlCarrito(producto, cantidad) },
+                        onClick = { 
+                            alAgregarAlCarrito(producto, cantidad)
+                            scope.launch {
+                                snackbarHostState.showSnackbar(
+                                    message = "✅ ¡Tu producto ya está en el carrito!",
+                                    actionLabel = "VER CARRITO",
+                                    duration = SnackbarDuration.Short
+                                ).let { result ->
+                                    if (result == SnackbarResult.ActionPerformed) {
+                                        alIrAlCarrito()
+                                    }
+                                }
+                            }
+                        },
                         modifier = Modifier
                             .size(54.dp)
                             .background(Color(0xFF1A1A1A), RoundedCornerShape(16.dp))
@@ -182,7 +197,10 @@ fun DetailScreen(
                     modifier = Modifier.fillMaxSize()
                 ) { page ->
                     AsyncImage(
-                        model = imageList[page],
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(imageList[page])
+                            .crossfade(true)
+                            .build(),
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize().padding(16.dp),
                         contentScale = ContentScale.Fit,
@@ -336,6 +354,40 @@ fun DetailScreen(
                     }
                 }
 
+                Spacer(modifier = Modifier.height(32.dp))
+
+                // CALCULADORA DE CUOTAS GALY (NUEVO)
+                Text("Opciones de Financiamiento", fontWeight = FontWeight.Black, fontSize = 18.sp, color = Color.White)
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF111111)),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+                ) {
+                    Column(modifier = Modifier.padding(20.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.CreditCard, null, tint = ColorGalyRed)
+                            Spacer(Modifier.width(12.dp))
+                            Text("Paga en cuotas con tu tarjeta favorita", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        
+                        val precio = producto.precioOferta
+                        QuotaRow("3 meses", "S/ ${(precio / 3).toInt()} /mes")
+                        QuotaRow("6 meses", "S/ ${(precio / 6).toInt()} /mes")
+                        QuotaRow("12 meses", "S/ ${(precio / 12).toInt()} /mes")
+                        
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            "* Montos referenciales sin intereses bancarios.", 
+                            color = Color.Gray, 
+                            fontSize = 10.sp,
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(40.dp))
 
                 // Productos Relacionados
@@ -345,7 +397,7 @@ fun DetailScreen(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     contentPadding = PaddingValues(bottom = 20.dp)
                 ) {
-                    items(productosRelacionados) { rel ->
+                    items(items = productosRelacionados, key = { it.id }) { rel ->
                         Box(modifier = Modifier.width(160.dp)) {
                             TarjetaProducto(producto = rel, alHacerClick = { alSeleccionarProductoRelacionado(it) })
                         }
@@ -544,6 +596,18 @@ fun DetailScreen(
             textContentColor = Color.White,
             shape = RoundedCornerShape(24.dp)
         )
+    }
+}
+
+@Composable
+fun QuotaRow(label: String, amount: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, color = Color.Gray, fontSize = 14.sp)
+        Text(amount, color = Color.White, fontWeight = FontWeight.Black, fontSize = 14.sp)
     }
 }
 

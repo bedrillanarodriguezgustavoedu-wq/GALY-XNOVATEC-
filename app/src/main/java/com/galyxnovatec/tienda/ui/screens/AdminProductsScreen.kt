@@ -10,6 +10,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -49,10 +50,19 @@ fun AdminProductsScreen(
     var textoBusqueda by remember { mutableStateOf("") }
     var selectedProductId by remember { mutableIntStateOf(-1) }
     var isUploading by remember { mutableStateOf(false) }
+    var filtroSeleccionado by remember { mutableStateOf("TODOS") }
 
-    val filteredProducts = remember(textoBusqueda, allProducts.size) {
-        if (textoBusqueda.isEmpty()) allProducts.filter { it.id != -1 }
-        else allProducts.filter { it.id != -1 && (it.nombre.contains(textoBusqueda, true) || it.marca.contains(textoBusqueda, true)) }
+    val filteredProducts = remember(textoBusqueda, filtroSeleccionado, allProducts.size) {
+        val query = textoBusqueda.lowercase()
+        allProducts.filter { prod ->
+            prod.id != -1 && 
+            (query.isEmpty() || prod.nombre.lowercase().contains(query) || prod.marca.lowercase().contains(query)) &&
+            when(filtroSeleccionado) {
+                "BAJO STOCK" -> prod.stock < 5
+                "CON OFERTA" -> (prod.precioNormal > prod.precioOferta)
+                else -> true
+            }
+        }
     }
 
     val launcher = rememberLauncherForActivityResult(
@@ -115,6 +125,28 @@ fun AdminProductsScreen(
                 shape = RoundedCornerShape(16.dp)
             )
 
+            // FILTROS RÁPIDOS
+            LazyRow(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val filtros = listOf("TODOS", "BAJO STOCK", "CON OFERTA")
+                items(filtros) { filtro ->
+                    FilterChip(
+                        selected = filtroSeleccionado == filtro,
+                        onClick = { filtroSeleccionado = filtro },
+                        label = { Text(filtro, fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = ColorGalyRed,
+                            selectedLabelColor = Color.White,
+                            containerColor = Color.White.copy(alpha = 0.05f),
+                            labelColor = Color.Gray
+                        ),
+                        border = BorderStroke(1.dp, if(filtroSeleccionado == filtro) ColorGalyRed else Color.White.copy(alpha = 0.1f))
+                    )
+                }
+            }
+
             Text(
                 "Total: ${filteredProducts.size} productos", 
                 color = ColorGalyRed, 
@@ -127,7 +159,7 @@ fun AdminProductsScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(filteredProducts) { producto ->
+                items(items = filteredProducts, key = { it.id }) { producto ->
                     AdminProductRow(
                         producto = producto,
                         onUpdateImage = {
@@ -212,6 +244,24 @@ fun AdminProductRow(
                 Text(producto.marca, color = Color.Gray, fontSize = 11.sp)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("S/ ${producto.precioOferta.toInt()}", color = ColorGalyRed, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Spacer(Modifier.width(8.dp))
+                    
+                    // MOSTRAR MARGEN DE GANANCIA (NUEVO)
+                    val margen = producto.precioOferta - producto.precioCompra
+                    Surface(
+                        color = if (margen > 0) Color.Green.copy(alpha = 0.05f) else Color.Gray.copy(alpha = 0.1f),
+                        shape = RoundedCornerShape(4.dp),
+                        border = BorderStroke(0.5.dp, if (margen > 0) Color(0xFF00FF41).copy(alpha = 0.3f) else Color.Gray.copy(alpha = 0.3f))
+                    ) {
+                        Text(
+                            "Margen: S/ ${margen.toInt()}", 
+                            color = if (margen > 0) Color(0xFF00FF41) else Color.Gray, 
+                            fontSize = 9.sp, 
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                        )
+                    }
+
                     Spacer(Modifier.width(8.dp))
                     Surface(
                         color = if (producto.stock < 5) Color.Red.copy(alpha = 0.2f) else Color.Green.copy(alpha = 0.1f),

@@ -34,6 +34,8 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import coil.request.ImageRequest
 import kotlinx.coroutines.delay
 import java.util.Locale
 
@@ -93,7 +95,10 @@ fun BannerPromocional(banners: List<Banner>) {
             Box(modifier = Modifier.fillMaxSize().background(Color(0xFF111111))) {
                 // IMAGEN DEL ANUNCIO
                 AsyncImage(
-                    model = banner.getFullImageUrl(),
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(banner.getFullImageUrl())
+                        .crossfade(true)
+                        .build(),
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop, // Llena todo el espacio

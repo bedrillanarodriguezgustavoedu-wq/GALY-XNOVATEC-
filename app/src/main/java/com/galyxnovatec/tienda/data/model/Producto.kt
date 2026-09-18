@@ -1,6 +1,7 @@
 package com.galyxnovatec.tienda.data.model
 
 import android.net.Uri
+import com.galyxnovatec.tienda.BuildConfig
 import com.galyxnovatec.tienda.R
 import com.google.gson.annotations.SerializedName
 
@@ -41,6 +42,8 @@ data class Producto(
     val imagenesSecundarias: String? = null,
     @SerializedName("stock")
     val stock: Int = 10,
+    @SerializedName("precio_compra")
+    val precioCompra: Double = 0.0,
     // Fallback resource ID
     val imagenRes: Int = 0
 ) {
@@ -54,18 +57,17 @@ data class Producto(
         
         val cleanUrl = imagenUrl.trim()
         
-        // Si el enlace contiene nuestra propia IP o ruta duplicada, extraemos solo el nombre del archivo
-        if (cleanUrl.contains("galy_api/img/")) {
-            val fileName = cleanUrl.substringAfterLast("/")
-            return "http://10.0.2.2/galy_api/img/${Uri.encode(fileName)}"
+        // Si ya es un enlace externo de internet (que no sea nuestra IP local), lo devolvemos tal cual
+        if (cleanUrl.startsWith("http") && !cleanUrl.contains("10.0.2.2") && !cleanUrl.contains("192.168.")) {
+            return cleanUrl
         }
-
-        // Si ya es un enlace externo de internet, lo devolvemos tal cual
-        if (cleanUrl.startsWith("http")) return cleanUrl
         
-        // Si es solo el nombre del archivo, lo codificamos y añadimos la ruta local
-        val safeName = Uri.encode(cleanUrl)
-        return "http://10.0.2.2/galy_api/img/$safeName"
+        // Extraemos solo el nombre del archivo para reconstruir la URL con la IP dinámica (BuildConfig.BASE_URL)
+        val fileName = if (cleanUrl.contains("/")) cleanUrl.substringAfterLast("/") else cleanUrl
+        val safeName = Uri.encode(fileName)
+        
+        // Usamos la BASE_URL configurada en local.properties (ej: http://192.168.137.167/galy_api/)
+        return "${BuildConfig.BASE_URL}img/$safeName"
     }
 
     /**
@@ -79,11 +81,12 @@ data class Producto(
         imagenesSecundarias?.split(",")?.forEach { img ->
             val cleanImg = img.trim()
             if (cleanImg.isNotEmpty()) {
-                if (cleanImg.startsWith("http")) {
+                if (cleanImg.startsWith("http") && !cleanImg.contains("10.0.2.2") && !cleanImg.contains("192.168.")) {
                     list.add(cleanImg)
                 } else {
-                    val safeName = Uri.encode(cleanImg)
-                    list.add("http://10.0.2.2/galy_api/img/$safeName")
+                    val fileName = if (cleanImg.contains("/")) cleanImg.substringAfterLast("/") else cleanImg
+                    val safeName = Uri.encode(fileName)
+                    list.add("${BuildConfig.BASE_URL}img/$safeName")
                 }
             }
         }

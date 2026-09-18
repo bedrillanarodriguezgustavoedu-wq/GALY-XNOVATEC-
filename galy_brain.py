@@ -32,6 +32,8 @@ def chat(message: str = Query(...)):
     reply = ""
 
     # --- INTELIGENCIA DE BÚSQUEDA GALY AI ---
+    reply = ""
+    product_id = None
 
     # 1. Búsqueda por Marca Específica
     marcas = ["apple", "sony", "samsung", "logitech", "asus", "hp", "msi", "lenovo", "acer"]
@@ -39,46 +41,51 @@ def chat(message: str = Query(...)):
 
     if "mejor" in msg or "recomendacion" in msg or "recomienda" in msg:
         if marca_encontrada:
-            cursor.execute(f"SELECT nombre, precio_oferta FROM productos WHERE marca LIKE '{marca_encontrada}' ORDER BY calificacion DESC LIMIT 1")
+            cursor.execute(f"SELECT id, nombre, precio_oferta FROM productos WHERE marca LIKE '{marca_encontrada}' ORDER BY calificacion DESC LIMIT 1")
             res = cursor.fetchone()
             if res:
-                reply = f"Como experto de GALY, mi mejor recomendación de {marca_encontrada.upper()} es la {res['nombre']}. Tiene una calificacion perfecta y está a solo S/ {res['precio_oferta']}."
+                reply = f"Como experto de GALY, mi mejor recomendación de {marca_encontrada.upper()} es la {res['nombre']}. Tiene una calificación perfecta y está a solo S/ {res['precio_oferta']}."
+                product_id = res['id']
         else:
-            cursor.execute("SELECT nombre, precio_oferta, marca FROM productos ORDER BY calificacion DESC, precio_oferta DESC LIMIT 1")
+            cursor.execute("SELECT id, nombre, precio_oferta, marca FROM productos ORDER BY calificacion DESC, precio_oferta DESC LIMIT 1")
             res = cursor.fetchone()
             if res:
                 reply = f"¡Sin duda! El producto estrella ahora mismo es la {res['nombre']} de {res['marca']}. Es potencia pura para lo que necesites."
+                product_id = res['id']
 
     # 2. Búsqueda por Presupuesto
     elif "barato" in msg or "economico" in msg or "oferta" in msg:
-        cursor.execute("SELECT nombre, precio_oferta FROM productos WHERE descuento > 20 ORDER BY precio_oferta ASC LIMIT 1")
+        cursor.execute("SELECT id, nombre, precio_oferta FROM productos WHERE descuento > 20 ORDER BY precio_oferta ASC LIMIT 1")
         res = cursor.fetchone()
         if res:
             reply = f"¡Tengo una súper oferta! La {res['nombre']} tiene más del 20% de descuento y te sale a S/ {res['precio_oferta']}. ¡Vuela que se agota!"
+            product_id = res['id']
 
     # 3. Búsqueda por Tipo de Uso
     elif "gamer" in msg or "gaming" in msg or "juego" in msg:
-        cursor.execute("SELECT nombre, precio_oferta FROM productos WHERE categoria_nombre = 'Laptops' AND (nombre LIKE '%Gaming%' OR nombre LIKE '%Nitro%' OR nombre LIKE '%TUF%') LIMIT 1")
+        cursor.execute("SELECT id, nombre, precio_oferta FROM productos WHERE categoria_nombre = 'Laptops' AND (nombre LIKE '%Gaming%' OR nombre LIKE '%Nitro%' OR nombre LIKE '%TUF%') LIMIT 1")
         res = cursor.fetchone()
         if res:
             reply = f"¡Para gaming no hay pierde! Te sugiero la {res['nombre']}. Corre todos los juegos actuales en ultra y está a S/ {res['precio_oferta']}."
+            product_id = res['id']
 
     # 4. Saludos y Ayuda General
     elif "hola" in msg or "quien eres" in msg:
         reply = "¡Hola! Soy el cerebro de GALY AI. Conozco cada uno de nuestros 100 productos a la perfección. ¿Buscas alguna marca o presupuesto específico?"
 
-    # 5. Fallback Inteligente (Busca cualquier coincidencia en el nombre)
+    # 5. Fallback Inteligente
     if not reply:
-        cursor.execute(f"SELECT nombre, precio_oferta FROM productos WHERE nombre LIKE '%{msg.split()[-1]}%' LIMIT 1")
+        cursor.execute(f"SELECT id, nombre, precio_oferta FROM productos WHERE nombre LIKE '%{msg.split()[-1]}%' LIMIT 1")
         res = cursor.fetchone()
         if res:
             reply = f"He encontrado algo relacionado: {res['nombre']} a S/ {res['precio_oferta']}. ¿Te gustaría saber más de este modelo?"
+            product_id = res['id']
         else:
             reply = "Estoy analizando nuestro inventario... ¿Podrías darme más detalles? Busco por marcas, precios o si lo quieres para estudio, trabajo o gaming."
 
     cursor.close()
     conn.close()
-    return {"reply": reply}
+    return {"reply": reply, "product_id": product_id}
 
 if __name__ == "__main__":
     print("🚀 GALY AI BRAIN v2.0 (Expert Edition) ACTIVO")

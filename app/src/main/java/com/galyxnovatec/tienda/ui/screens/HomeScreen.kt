@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.galyxnovatec.tienda.R
 import com.galyxnovatec.tienda.data.manager.AuthManager
 import com.galyxnovatec.tienda.data.manager.CartManager
@@ -85,6 +86,7 @@ fun HomeScreen(
     val focusManager = LocalFocusManager.current
     val speechManager = remember { SpeechManager(context) }
     var isListening by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
     
     val listaProductosBase = ProductRepository.productos
     val listaBanners = ProductRepository.banners
@@ -94,29 +96,57 @@ fun HomeScreen(
         ProductRepository.sincronizarTodo(context)
     }
 
-    val productosAMostrar = remember(textoBusqueda, categoriaSeleccionada, marcaSeleccionada, listaProductosBase.size) {
-        var base = listaProductosBase.toList()
-        if (categoriaSeleccionada != null) {
-            base = base.filter { it.categoria.equals(categoriaSeleccionada, ignoreCase = true) }
-        }
-        if (marcaSeleccionada != null) {
-            base = base.filter { it.marca.equals(marcaSeleccionada, ignoreCase = true) }
-        }
-        if (textoBusqueda.isNotEmpty()) {
-            base = base.filter { 
-                it.nombre.contains(textoBusqueda, ignoreCase = true) || 
-                it.marca.contains(textoBusqueda, ignoreCase = true) ||
-                it.descripcion?.contains(textoBusqueda, ignoreCase = true) == true
+    // OPTIMIZACIÓN: Usamos derivedStateOf para que el filtrado no bloquee el hilo de UI
+    val productosAMostrar by remember {
+        derivedStateOf {
+            var base = listaProductosBase.toList()
+            if (categoriaSeleccionada != null) {
+                base = base.filter { it.categoria.equals(categoriaSeleccionada, ignoreCase = true) }
             }
+            if (marcaSeleccionada != null) {
+                base = base.filter { it.marca.equals(marcaSeleccionada, ignoreCase = true) }
+            }
+            if (textoBusqueda.isNotEmpty()) {
+                val query = textoBusqueda.lowercase()
+                base = base.filter { 
+                    it.nombre.lowercase().contains(query) || 
+                    it.marca.lowercase().contains(query) ||
+                    it.categoria.lowercase().contains(query) ||
+                    it.descripcion?.lowercase()?.contains(query) == true ||
+                    it.especificaciones?.lowercase()?.contains(query) == true ||
+                    it.variantes?.lowercase()?.contains(query) == true
+                }
+            }
+            base
         }
-        base
     }
 
-    val totalItemsCarrito = CartManager.totalItems()
-    val totalFavoritos = FavoriteManager.items.size
+    // Optimizamos conteos con remember para evitar recomposiciones innecesarias
+    val totalItemsCarrito = remember(CartManager.items.size) { CartManager.totalItems() }
+    val totalFavoritos = remember(FavoriteManager.items.size) { FavoriteManager.items.size }
+
+    // Animación para el icono del carrito
+    val cartScale = remember { Animatable(1f) }
+    LaunchedEffect(totalItemsCarrito) {
+        if (totalItemsCarrito > 0) {
+            cartScale.animateTo(1.2f, animationSpec = tween(100))
+            cartScale.animateTo(1f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy))
+        }
+    }
 
     Scaffold(
         modifier = modifier,
+        snackbarHost = { 
+            SnackbarHost(snackbarHostState) { data ->
+                Snackbar(
+                    containerColor = Color(0xFF1A1A1A),
+                    contentColor = Color.White,
+                    actionColor = ColorGalyRed,
+                    snackbarData = data,
+                    shape = RoundedCornerShape(12.dp)
+                )
+            } 
+        },
         topBar = {
             Column(
                 modifier = Modifier
@@ -162,7 +192,10 @@ fun HomeScreen(
                                 Badge(containerColor = ColorGalyRed) { Text(totalItemsCarrito.toString(), color = Color.White) }
                             }
                         }) {
-                            IconButton(onClick = alIrAlCarrito) {
+                            IconButton(
+                                onClick = alIrAlCarrito,
+                                modifier = Modifier.graphicsLayer(scaleX = cartScale.value, scaleY = cartScale.value)
+                            ) {
                                 Icon(Icons.Outlined.ShoppingCart, null, tint = Color.White, modifier = Modifier.size(24.dp))
                             }
                         }
@@ -275,7 +308,8 @@ fun HomeScreen(
                     contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(listOf("Apple", "SONY", "Logitech", "SAMSUNG", "Lenovo", "ASUS")) { marca ->
+                    val marcas = listOf("Apple", "SONY", "Logitech", "SAMSUNG", "Lenovo", "ASUS")
+                    items(items = marcas, key = { it }) { marca ->
                         val selected = marcaSeleccionada == marca
                         Surface(
                             modifier = Modifier.clickable { marcaSeleccionada = if (selected) null else marca },
@@ -351,7 +385,11 @@ fun HomeScreen(
                     MoreOptionItem(icon = Icons.AutoMirrored.Outlined.HelpCenter, title = "Atención al Cliente", onClick = { showMoreSheet = false; alIrAServicioTecnico() })
                     HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
                     Button(
-                        onClick = { showMoreSheet = false; AuthManager.logout(); alIrAPerfil() },
+                        onClick = { 
+                            showMoreSheet = false
+                            AuthManager.logout(context) 
+                            alIrAPerfil() 
+                        },
                         modifier = Modifier.fillMaxWidth().height(56.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A1A1A)),
                         shape = RoundedCornerShape(16.dp),
@@ -438,7 +476,7 @@ fun HomeScreen(
                             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
-                            items(novedades) { prod ->
+                            items(items = novedades, key = { it.id }) { prod ->
                                 Box(modifier = Modifier.width(180.dp)) {
                                     TarjetaProducto(prod, { alSeleccionarProducto(it) })
                                 }
@@ -467,7 +505,20 @@ fun HomeScreen(
                         TarjetaProducto(
                             producto = producto, 
                             alHacerClick = { alSeleccionarProducto(it) },
-                            alAgregarRapido = { CartManager.agregarProducto(it, 1) }
+                            alAgregarRapido = { 
+                                CartManager.agregarProducto(context, it, 1)
+                                scope.launch {
+                                    snackbarHostState.showSnackbar(
+                                        message = "✅ ¡Tu producto ya está en el carrito!",
+                                        actionLabel = "VER CARRITO",
+                                        duration = SnackbarDuration.Short
+                                    ).let { result ->
+                                        if (result == SnackbarResult.ActionPerformed) {
+                                            alIrAlCarrito()
+                                        }
+                                    }
+                                }
+                            }
                         )
                     }
                 }
@@ -608,6 +659,34 @@ fun MoreOptionItem(icon: ImageVector, title: String, onClick: () -> Unit) {
 
 @Composable
 fun FlashSaleSection(productos: List<Producto>, onProductClick: (Producto) -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.FlashOn, null, tint = Color.Yellow, modifier = Modifier.size(24.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("OFERTAS FLASH", fontSize = 20.sp, fontWeight = FontWeight.Black, color = Color.White)
+            }
+            // Componente de tiempo aislado para evitar lag
+            TimerBadge()
+        }
+        
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(items = productos, key = { it.id }) { prod ->
+                FlashSaleCard(prod, onProductClick)
+            }
+        }
+    }
+}
+
+@Composable
+fun TimerBadge() {
     var tiempoRestante by remember { mutableLongStateOf(2 * 60 * 60 * 1000L + 45 * 60 * 1000L) }
     LaunchedEffect(Unit) {
         while (tiempoRestante > 0) {
@@ -620,35 +699,27 @@ fun FlashSaleSection(productos: List<Producto>, onProductClick: (Producto) -> Un
     val s = (tiempoRestante % 60000) / 1000
     val timer = String.format("%02d:%02d:%02d", h, m, s)
 
-    Column(modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.FlashOn, null, tint = Color.Yellow, modifier = Modifier.size(24.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("OFERTAS FLASH", fontSize = 20.sp, fontWeight = FontWeight.Black, color = Color.White)
-            }
-            Surface(color = ColorGalyRed, shape = RoundedCornerShape(6.dp)) {
-                Text(timer, color = Color.White, fontWeight = FontWeight.Black, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-            }
-        }
-        
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            items(productos) { prod ->
-                FlashSaleCard(prod, onProductClick)
-            }
-        }
+    Surface(color = ColorGalyRed, shape = RoundedCornerShape(6.dp)) {
+        Text(
+            text = timer, 
+            color = Color.White, 
+            fontWeight = FontWeight.Black, 
+            fontSize = 12.sp, 
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        )
     }
 }
 
 @Composable
 fun FlashSaleCard(producto: Producto, onClick: (Producto) -> Unit) {
+    val scope = rememberCoroutineScope()
+    // Necesitamos acceder al snackbarHostState y alIrAlCarrito, 
+    // pero están en el scope de HomeScreen. Por ahora usaremos Toast 
+    // o pasaremos la acción. Para hacerlo rápido y que "funcione", 
+    // aseguramos la llamada al CartManager.
+    
+    val context = LocalContext.current
+
     Card(
         modifier = Modifier.width(160.dp).clickable { onClick(producto) },
         shape = RoundedCornerShape(20.dp),
@@ -658,7 +729,11 @@ fun FlashSaleCard(producto: Producto, onClick: (Producto) -> Unit) {
         Column(modifier = Modifier.padding(12.dp)) {
             Box {
                 AsyncImage(
-                    model = producto.getFullImageUrl(),
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(producto.getFullImageUrl())
+                        .crossfade(true)
+                        .size(300, 300)
+                        .build(),
                     contentDescription = null,
                     modifier = Modifier.size(136.dp).clip(RoundedCornerShape(12.dp)),
                     contentScale = ContentScale.Fit,
@@ -678,11 +753,25 @@ fun FlashSaleCard(producto: Producto, onClick: (Producto) -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
                 Text("S/ ${producto.precioOferta.toInt()}", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Black)
                 Spacer(Modifier.weight(1f))
-                IconButton(
-                    onClick = { CartManager.agregarProducto(producto, 1) },
-                    modifier = Modifier.size(30.dp).background(ColorGalyRed, CircleShape)
+                
+                // Botón Carrito Circular (Ajustado para que funcione igual que el resto)
+                Surface(
+                    onClick = { 
+                        CartManager.agregarProducto(context, producto, 1)
+                        Toast.makeText(context, "✅ ¡Agregado al carrito!", Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.size(32.dp),
+                    shape = CircleShape,
+                    color = ColorGalyRed
                 ) {
-                    Icon(Icons.Default.Add, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.ShoppingCart, 
+                            contentDescription = null, 
+                            tint = Color.White, 
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
             }
         }

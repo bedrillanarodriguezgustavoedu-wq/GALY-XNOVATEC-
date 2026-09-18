@@ -21,7 +21,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.galyxnovatec.tienda.R
 import com.galyxnovatec.tienda.data.manager.FavoriteManager
 import com.galyxnovatec.tienda.data.model.Producto
@@ -48,7 +50,11 @@ fun TarjetaProducto(
         Column {
             Box(modifier = Modifier.fillMaxWidth().height(160.dp)) {
                 AsyncImage(
-                    model = producto.getFullImageUrl(),
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(producto.getFullImageUrl())
+                        .crossfade(true)
+                        .size(300, 300) // Limitamos la resolución en memoria para evitar lag
+                        .build(),
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize().padding(12.dp).clip(RoundedCornerShape(16.dp)),
                     contentScale = ContentScale.Fit,

@@ -58,7 +58,9 @@ object OrderManager {
         items: List<CartItem>, 
         total: Double,
         metodoPago: String? = null,
-        direccion: Direccion? = null
+        metodoEntrega: String? = null,
+        direccion: Direccion? = null,
+        dni: String? = null
     ): Any? {
         if (userId == null) return "Usuario no identificado"
 
@@ -76,6 +78,9 @@ object OrderManager {
                 },
                 metodo_pago = metodoPago,
                 cliente_telefono = AuthManager.currentUser?.telefono,
+                cliente_email = AuthManager.currentUser?.email,
+                cliente_dni = dni,
+                metodo_entrega = metodoEntrega,
                 direccion = direccion?.direccion,
                 ciudad = direccion?.ciudad,
                 distrito = direccion?.distrito,
@@ -84,6 +89,12 @@ object OrderManager {
             )
             val response = RetrofitClient.instance.createOrder(orderRequest)
             if (response["success"] == true) {
+                // Actualizar puntos del usuario localmente si la compra fue exitosa
+                val nuevosPuntos = (total / 100).toInt()
+                AuthManager.currentUser = AuthManager.currentUser?.let { 
+                    it.copy(puntos = it.puntos + nuevosPuntos)
+                }
+                
                 fetchOrders(userId)
                 true // Éxito
             } else {
