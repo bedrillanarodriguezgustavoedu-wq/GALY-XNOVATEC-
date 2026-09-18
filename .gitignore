@@ -1,6 +1,6 @@
-# Android Studio & Gradle
-*.iml
+# Gradle and local files
 .gradle
+.gradle_home/
 /local.properties
 /.idea/caches
 /.idea/libraries
