@@ -3,7 +3,6 @@ package com.galyxnovatec.tienda.ui.screens
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -19,7 +18,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CloudUpload
-import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -35,22 +33,47 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.galyxnovatec.tienda.R
+import com.galyxnovatec.tienda.data.PaymentAppLauncher
+import com.galyxnovatec.tienda.data.manager.AuthManager
+import com.galyxnovatec.tienda.data.manager.OrderManager
+import com.galyxnovatec.tienda.data.network.ManualPaymentMethod
+import com.galyxnovatec.tienda.data.network.RetrofitClient
 import com.galyxnovatec.tienda.ui.theme.ColorGalyRed
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun YapePaymentScreen(
     monto: Double,
+    pedidoId: Int,
     alVolver: () -> Unit,
     alConfirmarPago: () -> Unit
 ) {
     val context = LocalContext.current
-    val numeroYape = "978104136"
+    val scope = rememberCoroutineScope()
+    var yapeMethod by remember { mutableStateOf<ManualPaymentMethod?>(null) }
+    var paymentMethodsLoading by remember { mutableStateOf(true) }
+    var paymentMethodsError by remember { mutableStateOf<String?>(null) }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         imageUri = uri
+    }
+
+    LaunchedEffect(Unit) {
+        try {
+            val response = RetrofitClient.webInstance.getPaymentMethods()
+            if (response.success) {
+                yapeMethod = response.methods.firstOrNull { it.method == "YAPE" }
+            } else {
+                paymentMethodsError = response.message ?: "No se pudo cargar la configuración de Yape."
+            }
+        } catch (_: Exception) {
+            paymentMethodsError = "No se pudo cargar la configuración oficial de Yape."
+        } finally {
+            paymentMethodsLoading = false
+        }
     }
 
     Scaffold(
@@ -85,43 +108,32 @@ fun YapePaymentScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = "Escanea el código QR para pagar",
+                text = "Paga desde la aplicación de Yape",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
                 color = Color.White
             )
-            
-            Spacer(modifier = Modifier.height(24.dp))
 
-            // RECUADRO DEL QR PREMIUM
-            Box(
-                modifier = Modifier
-                    .size(260.dp)
-                    .clip(RoundedCornerShape(32.dp))
-                    .background(Color.White)
-                    .border(BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.2f)), RoundedCornerShape(32.dp))
-                    .padding(20.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                // Si tienes la imagen en drawable, se verá aquí
-                val qrRes = painterResource(id = R.drawable.icono) // Usamos el nuevo icono como placeholder elegante
-                Image(
-                    painter = qrRes,
-                    contentDescription = "QR GALY",
-                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp)),
-                    contentScale = ContentScale.Fit
+            Spacer(modifier = Modifier.height(18.dp))
+
+            if (yapeMethod != null) {
+                Text("Número Yape: ${yapeMethod!!.number}", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text("Titular: ${yapeMethod!!.holder}", color = Color.LightGray, fontSize = 13.sp)
+                Text(
+                    "Al abrir Yape, realiza la transferencia al número indicado y confirma que el titular sea correcto.",
+                    color = Color.Gray,
+                    fontSize = 12.sp,
+                    textAlign = TextAlign.Center
                 )
-                
-                // Texto de ayuda sobre el QR
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(8.dp))
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text("QR OFICIAL GALY", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                }
+            } else {
+                Text(
+                    if (paymentMethodsLoading) "Cargando los datos de Yape…" else paymentMethodsError
+                        ?: "Yape no está configurado en la tienda.",
+                    color = Color.Gray,
+                    fontSize = 12.sp,
+                    textAlign = TextAlign.Center
+                )
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -143,28 +155,19 @@ fun YapePaymentScreen(
             // BOTÓN PARA ABRIR YAPE Y COPIAR NÚMERO
             Button(
                 onClick = {
+                    val number = yapeMethod?.number ?: return@Button
                     // 1. Copiar número al portapapeles
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    val clip = ClipData.newPlainText("Número Yape", numeroYape)
+                    val clip = ClipData.newPlainText("Número Yape", number)
                     clipboard.setPrimaryClip(clip)
-                    Toast.makeText(context, "Número $numeroYape copiado", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Número copiado", Toast.LENGTH_SHORT).show()
 
-                    // 2. Intentar abrir la app de Yape
-                    val intent = context.packageManager.getLaunchIntentForPackage("com.bcp.innovabcp.yape")
-                    if (intent != null) {
-                        context.startActivity(intent)
-                    } else {
-                        // Si no está instalada, abrir Play Store
-                        try {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.bcp.innovabcp.yape")))
-                        } catch (e: Exception) {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.bcp.innovabcp.yape")))
-                        }
-                    }
+                    PaymentAppLauncher.open(context, "com.bcp.innovabcp.yape", "Yape")
                 },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF742D8A)) // Color morado Yape
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF742D8A)),
+                enabled = yapeMethod != null
             ) {
                 Image(
                     painter = painterResource(id = R.drawable.yape),
@@ -225,13 +228,39 @@ fun YapePaymentScreen(
             Spacer(modifier = Modifier.height(40.dp))
 
             Button(
-                onClick = alConfirmarPago,
+                onClick = {
+                    val receipt = imageUri ?: return@Button
+                    scope.launch {
+                        val error = OrderManager.sendPaymentReceipt(
+                            context = context,
+                            orderId = pedidoId,
+                            method = "YAPE",
+                            imageUri = receipt
+                        )
+                        if (error == null) {
+                            alConfirmarPago()
+                        } else {
+                            Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+                        }
+                    }
+                },
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
                 enabled = imageUri != null
+                    && yapeMethod != null
+                    && !AuthManager.googleIdToken.isNullOrBlank()
+                    && !OrderManager.isSubmittingReceipt
             ) {
-                Text("CONFIRMAR MI PEDIDO", fontWeight = FontWeight.ExtraBold)
+                if (OrderManager.isSubmittingReceipt) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.dp,
+                        color = Color.Black
+                    )
+                } else {
+                    Text("ENVIAR COMPROBANTE", fontWeight = FontWeight.ExtraBold)
+                }
             }
             
             Spacer(modifier = Modifier.height(24.dp))

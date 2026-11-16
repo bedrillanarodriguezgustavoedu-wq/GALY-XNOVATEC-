@@ -6,6 +6,14 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <queries>
+        <package android:name="com.bcp.innovabcp.yape" />
+        <package android:name="com.interbank.mobilebanking" />
+        <package android:name="com.bcp.bank.mobile" />
+        <package android:name="com.bbva.bbvacontigo" />
+        <package android:name="pe.com.bn.bnmovil" />
+    </queries>
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"

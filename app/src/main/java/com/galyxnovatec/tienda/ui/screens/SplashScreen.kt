@@ -1,51 +1,48 @@
 package com.galyxnovatec.tienda.ui.screens
 
 import android.net.Uri
+import android.util.Log
 import android.view.ViewGroup
 import androidx.annotation.OptIn
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.layout.layout
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import androidx.compose.ui.tooling.preview.Preview
 import com.galyxnovatec.tienda.R
 import com.galyxnovatec.tienda.data.repository.ProductRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-import androidx.compose.ui.draw.scale
-
-import androidx.compose.foundation.isSystemInDarkTheme
-
 @OptIn(UnstableApi::class)
 @Composable
 fun SplashScreen(onAnimationFinished: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var videoEnded by remember { mutableStateOf(false) }
-    var minTimeElapsed by remember { mutableStateOf(false) }
-    
-    // Forzamos estilo oscuro para el video siempre
-    val colorFondo = Color.Black
+    var hasNavigated by remember { mutableStateOf(false) }
+    val alphaAnim = remember { Animatable(1f) }
 
-    // Cuando AMBAS condiciones se cumplen, avanzamos
-    LaunchedEffect(videoEnded, minTimeElapsed) {
-        if (videoEnded && minTimeElapsed) {
+    fun finishSplash() {
+        if (!hasNavigated) {
+            hasNavigated = true
             onAnimationFinished()
         }
     }
@@ -54,51 +51,53 @@ fun SplashScreen(onAnimationFinished: () -> Unit) {
         ExoPlayer.Builder(context)
             .setLoadControl(
                 DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(2500, 5000, 1000, 1500) // Valores más robustos para emulador
+                    .setBufferDurationsMs(2000, 5000, 1000, 1500)
                     .build()
             )
             .build().apply {
                 val videoUri = Uri.parse("android.resource://${context.packageName}/${R.raw.gus}")
                 setMediaItem(MediaItem.fromUri(videoUri))
                 setAudioAttributes(AudioAttributes.DEFAULT, false)
+                repeatMode = Player.REPEAT_MODE_ONE // Bucle continuo para asegurar reproducción completa
+                volume = 1.0f
                 prepare()
                 playWhenReady = true
                 
                 addListener(object : Player.Listener {
-                    override fun onPlaybackStateChanged(playbackState: Int) {
-                        if (playbackState == Player.STATE_ENDED) {
-                            videoEnded = true
-                        }
+                    override fun onPlayerError(error: PlaybackException) {
+                        Log.e("GALY_SPLASH", "Error en video intro: ${error.message}")
                     }
                 })
             }
     }
 
     LaunchedEffect(Unit) {
-        // Sincronización de datos en segundo plano con retraso para dar prioridad al video
+        // Carga de productos en segundo plano
         scope.launch(Dispatchers.IO) {
-            delay(2000) // Permitimos que el video inicie sin carga de red/CPU adicional
-            try { ProductRepository.sincronizarTodo() } catch(e: Exception) {}
+            try { ProductRepository.sincronizarTodo() } catch (e: Exception) {}
         }
         
-        // Tiempo mínimo garantizado (7 segundos para que se vea el logo)
-        delay(7000)
-        minTimeElapsed = true
-        
-        // Fail-safe: Si después de 12 segundos el video no dio señal de terminar, avanzamos igual
-        delay(5000)
-        videoEnded = true
+        // Tiempo pausado y cinemático garantizado (11 segundos completos)
+        delay(11000)
+        alphaAnim.animateTo(0f, animationSpec = tween(800))
+        finishSplash()
     }
 
     DisposableEffect(Unit) {
         onDispose {
-            exoPlayer.stop()
-            exoPlayer.release()
+            try {
+                exoPlayer.stop()
+                exoPlayer.release()
+            } catch (e: Exception) {}
         }
     }
 
     Box(
-        modifier = Modifier.fillMaxSize().background(Color.Black),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .alpha(alphaAnim.value)
+            .clickable { finishSplash() },
         contentAlignment = Alignment.Center
     ) {
         AndroidView(
@@ -115,31 +114,13 @@ fun SplashScreen(onAnimationFinished: () -> Unit) {
                     setBackgroundColor(android.graphics.Color.BLACK)
                 }
             },
-            modifier = Modifier
-                .fillMaxSize()
-                .scale(1.1f) // Zoom reducido para evitar recortes negros
-        )
-        
-        // FILTRO DE VIDEO (Simplificado para mejor rendimiento en emulador)
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        0.0f to Color.Black.copy(alpha = 0.3f),
-                        0.5f to Color.Transparent,
-                        1.0f to Color.Black.copy(alpha = 0.6f)
-                    )
-                )
-        )
-        
-        // PARCHE DE SEGURIDAD NEGRO (Tapa el logo de Renderforest)
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(115.dp) 
-                .background(Color.Black)
+            modifier = Modifier.fillMaxSize()
         )
     }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+fun SplashScreenPreview() {
+    SplashScreen {}
 }

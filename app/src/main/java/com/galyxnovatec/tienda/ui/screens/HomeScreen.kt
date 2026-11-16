@@ -71,14 +71,21 @@ fun HomeScreen(
     alIrAFavoritos: () -> Unit,
     alIrACategorias: () -> Unit,
     alIrAPerfil: () -> Unit,
+    alIrAPanelAdmin: () -> Unit,
     alIrAServicioTecnico: () -> Unit,
     alIrAChatAi: () -> Unit,
     modifier: Modifier = Modifier,
     categoriaInicial: String? = null,
 ) {
     var textoBusqueda by remember { mutableStateOf("") }
-    var categoriaSeleccionada by remember { mutableStateOf(categoriaInicial) }
+    val categoriaLimpiaInicial = remember(categoriaInicial) {
+        if (categoriaInicial.isNullOrBlank() || categoriaInicial == "{category}" || categoriaInicial.startsWith("{")) null else categoriaInicial
+    }
+    var categoriaSeleccionada by remember(categoriaLimpiaInicial) { mutableStateOf(categoriaLimpiaInicial) }
     var marcaSeleccionada by remember { mutableStateOf<String?>(null) }
+    var ordenSeleccionado by remember { mutableStateOf("DEFECTO") }
+    var soloEnStock by remember { mutableStateOf(false) }
+    var showFilterSheet by remember { mutableStateOf(false) }
     var showMoreSheet by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState()
     val scope = rememberCoroutineScope()
@@ -96,36 +103,27 @@ fun HomeScreen(
         ProductRepository.sincronizarTodo(context)
     }
 
-    // OPTIMIZACIÓN: Usamos derivedStateOf para que el filtrado no bloquee el hilo de UI
-    val productosAMostrar by remember {
+    val productosAMostrar by remember(
+        listaProductosBase.size,
+        categoriaSeleccionada,
+        marcaSeleccionada,
+        textoBusqueda,
+        ordenSeleccionado,
+        soloEnStock
+    ) {
         derivedStateOf {
-            var base = listaProductosBase.toList()
-            if (categoriaSeleccionada != null) {
-                base = base.filter { it.categoria.equals(categoriaSeleccionada, ignoreCase = true) }
-            }
-            if (marcaSeleccionada != null) {
-                base = base.filter { it.marca.equals(marcaSeleccionada, ignoreCase = true) }
-            }
-            if (textoBusqueda.isNotEmpty()) {
-                val query = textoBusqueda.lowercase()
-                base = base.filter { 
-                    it.nombre.lowercase().contains(query) || 
-                    it.marca.lowercase().contains(query) ||
-                    it.categoria.lowercase().contains(query) ||
-                    it.descripcion?.lowercase()?.contains(query) == true ||
-                    it.especificaciones?.lowercase()?.contains(query) == true ||
-                    it.variantes?.lowercase()?.contains(query) == true
-                }
-            }
-            base
+            ProductRepository.obtenerProductosFiltrados(
+                busqueda = textoBusqueda,
+                categoria = categoriaSeleccionada,
+                soloEnStock = soloEnStock,
+                orden = ordenSeleccionado
+            )
         }
     }
 
-    // Optimizamos conteos con remember para evitar recomposiciones innecesarias
     val totalItemsCarrito = remember(CartManager.items.size) { CartManager.totalItems() }
     val totalFavoritos = remember(FavoriteManager.items.size) { FavoriteManager.items.size }
 
-    // Animación para el icono del carrito
     val cartScale = remember { Animatable(1f) }
     LaunchedEffect(totalItemsCarrito) {
         if (totalItemsCarrito > 0) {
@@ -154,7 +152,6 @@ fun HomeScreen(
                     .background(Color.Black)
                     .statusBarsPadding()
             ) {
-                // Header Premium Original
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -177,6 +174,16 @@ fun HomeScreen(
                     }
                     
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (AuthManager.currentUser?.esAdmin == true) {
+                            IconButton(onClick = alIrAPanelAdmin) {
+                                Icon(
+                                    Icons.Default.AdminPanelSettings,
+                                    contentDescription = "Abrir panel de administrador GALY",
+                                    tint = ColorGalyRed,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
                         BadgedBox(badge = {
                             if (totalFavoritos > 0) {
                                 Badge(containerColor = ColorGalyRed) { Text(totalFavoritos.toString(), color = Color.White) }
@@ -202,7 +209,6 @@ fun HomeScreen(
                     }
                 }
 
-                // Buscador Premium con Acceso Directo a AI
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -217,22 +223,34 @@ fun HomeScreen(
                     ) {
                         Icon(Icons.Default.Search, null, tint = Color.Gray, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(12.dp))
-                        Box(modifier = Modifier.weight(1f)) {
+                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                             if (textoBusqueda.isEmpty()) {
                                 Text("¿Qué tecnología buscas hoy?", color = Color.Gray, fontSize = 14.sp)
                             }
-                            BasicTextField(
-                                value = textoBusqueda,
-                                onValueChange = { textoBusqueda = it },
-                                textStyle = TextStyle(color = Color.White, fontSize = 14.sp),
-                                modifier = Modifier.fillMaxWidth(),
-                                cursorBrush = SolidColor(ColorGalyRed),
-                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                                keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
-                                singleLine = true
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                BasicTextField(
+                                    value = textoBusqueda,
+                                    onValueChange = { textoBusqueda = it },
+                                    textStyle = TextStyle(color = Color.White, fontSize = 14.sp),
+                                    modifier = Modifier.weight(1f),
+                                    cursorBrush = SolidColor(ColorGalyRed),
+                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                    keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
+                                    singleLine = true
+                                )
+                                if (textoBusqueda.isNotEmpty()) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Limpiar",
+                                        tint = Color.Gray,
+                                        modifier = Modifier
+                                            .size(18.dp)
+                                            .clickable { textoBusqueda = "" }
+                                    )
+                                }
+                            }
                         }
-                        // BOTÓN DE VOZ
+                        
                         IconButton(onClick = {
                             if (isListening) {
                                 speechManager.stopListening()
@@ -254,7 +272,7 @@ fun HomeScreen(
                             Box(contentAlignment = Alignment.Center) {
                                 if (isListening) {
                                     val infiniteTransition = rememberInfiniteTransition(label = "mic_ripple")
-                                    val scale by infiniteTransition.animateFloat(
+                                    val rippleScale by infiniteTransition.animateFloat(
                                         initialValue = 1f,
                                         targetValue = 2f,
                                         animationSpec = infiniteRepeatable(
@@ -263,7 +281,7 @@ fun HomeScreen(
                                         ),
                                         label = "scale"
                                     )
-                                    val alpha by infiniteTransition.animateFloat(
+                                    val rippleAlpha by infiniteTransition.animateFloat(
                                         initialValue = 0.5f,
                                         targetValue = 0f,
                                         animationSpec = infiniteRepeatable(
@@ -273,7 +291,7 @@ fun HomeScreen(
                                         label = "alpha"
                                     )
                                     Surface(
-                                        modifier = Modifier.size(24.dp).graphicsLayer(scaleX = scale, scaleY = scale, alpha = alpha),
+                                        modifier = Modifier.size(24.dp).graphicsLayer(scaleX = rippleScale, scaleY = rippleScale, alpha = rippleAlpha),
                                         shape = CircleShape,
                                         color = ColorGalyRed
                                     ) {}
@@ -287,7 +305,17 @@ fun HomeScreen(
                             }
                         }
                         
-                        // BOTÓN DE GALY AI INTEGRADO
+                        IconButton(onClick = { 
+                            showFilterSheet = true
+                        }) {
+                            Icon(
+                                Icons.Default.Tune,
+                                contentDescription = "Filtros y Orden",
+                                tint = if (ordenSeleccionado != "DEFECTO" || soloEnStock) ColorGalyRed else Color.Gray,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        
                         Surface(
                             modifier = Modifier
                                 .size(32.dp)
@@ -302,17 +330,25 @@ fun HomeScreen(
                     }
                 }
                 
-                // Filtro Marcas Original
                 LazyRow(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
                     contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    val marcas = listOf("Apple", "SONY", "Logitech", "SAMSUNG", "Lenovo", "ASUS")
-                    items(items = marcas, key = { it }) { marca ->
-                        val selected = marcaSeleccionada == marca
+                    val marcas = ProductRepository.marcas.ifEmpty {
+                        listOf("Apple", "SONY", "Logitech", "SAMSUNG", "Lenovo", "ASUS").mapIndexed { index, nombre ->
+                            com.galyxnovatec.tienda.data.model.MarcaCompartida(
+                                id = -index - 1,
+                                nombre = nombre,
+                                slug = nombre.lowercase(),
+                                activo = true
+                            )
+                        }
+                    }
+                    items(items = marcas, key = { it.id }) { marca ->
+                        val selected = marcaSeleccionada.equals(marca.nombre, ignoreCase = true)
                         Surface(
-                            modifier = Modifier.clickable { marcaSeleccionada = if (selected) null else marca },
+                            modifier = Modifier.clickable { marcaSeleccionada = if (selected) null else marca.nombre },
                             shape = RoundedCornerShape(12.dp),
                             color = if (selected) Color.White else Color(0xFF1A1A1A),
                             border = BorderStroke(1.dp, if (selected) Color.White else Color(0xFF333333))
@@ -321,10 +357,10 @@ fun HomeScreen(
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                if (marca == "Apple") Icon(Icons.Default.Laptop, null, tint = if(selected) Color.Black else Color.White, modifier = Modifier.size(14.dp))
-                                if (marca == "Apple") Spacer(Modifier.width(6.dp))
+                                MarcaLogo(marca = marca, modifier = Modifier.size(28.dp))
+                                Spacer(Modifier.width(8.dp))
                                 Text(
-                                    text = marca.uppercase(),
+                                    text = marca.nombre.uppercase(),
                                     color = if (selected) Color.Black else Color.White,
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 12.sp,
@@ -438,7 +474,7 @@ fun HomeScreen(
                         )
                     }
                     CategoriasRapidas(categoriaSeleccionada) { cat ->
-                        categoriaSeleccionada = if(categoriaSeleccionada == cat) null else cat
+                        categoriaSeleccionada = if(categoriaSeleccionada == (cat as? String)) null else (cat as? String)
                     }
                     
                     if (categoriaSeleccionada != null || marcaSeleccionada != null || textoBusqueda.isNotEmpty()) {
@@ -454,31 +490,32 @@ fun HomeScreen(
                         ) {
                             Icon(Icons.Default.FilterList, null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("MOSTRAR TODOS LOS PRODUCTOS (1-22)", fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
+                            Text("MOSTRAR TODOS LOS PRODUCTOS", fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
                         }
                     }
                 }
             }
 
-            item(span = { GridItemSpan(2) }) {
-                FlashSaleSection(listaProductosBase.take(6)) { alSeleccionarProducto(it) }
-            }
-
-            // NOVEDADES
-            item(span = { GridItemSpan(2) }) {
-                val novedades = remember(listaProductosBase.size) { 
-                    listaProductosBase.filter { it.etiquetaEspecial?.contains("NUEVO", true) == true }.take(10) 
+            if (textoBusqueda.isEmpty()) {
+                item(span = { GridItemSpan(2) }) {
+                    FlashSaleSection(listaProductosBase) { alSeleccionarProducto(it) }
                 }
-                if (novedades.isNotEmpty()) {
-                    Column(modifier = Modifier.padding(top = 10.dp)) {
-                        Text("Lo más nuevo", fontSize = 20.sp, fontWeight = FontWeight.Black, color = Color.White, modifier = Modifier.padding(horizontal = 20.dp))
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            items(items = novedades, key = { it.id }) { prod ->
-                                Box(modifier = Modifier.width(180.dp)) {
-                                    TarjetaProducto(prod, { alSeleccionarProducto(it) })
+
+                item(span = { GridItemSpan(2) }) {
+                    val novedades = remember(listaProductosBase.size) { 
+                        listaProductosBase.filter { it.etiquetaEspecial?.contains("NUEVO", true) == true }.take(10) 
+                    }
+                    if (novedades.isNotEmpty()) {
+                        Column(modifier = Modifier.padding(top = 10.dp)) {
+                            Text("Lo más nuevo", fontSize = 20.sp, fontWeight = FontWeight.Black, color = Color.White, modifier = Modifier.padding(horizontal = 20.dp))
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                items(items = novedades, key = { it.id }) { prod ->
+                                    Box(modifier = Modifier.width(180.dp)) {
+                                        TarjetaProducto(prod, { alSeleccionarProducto(it) })
+                                    }
                                 }
                             }
                         }
@@ -492,8 +529,39 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Recomendados para ti", color = Color.White, fontWeight = FontWeight.Black, fontSize = 18.sp)
-                    Text("${productosAMostrar.size} productos", color = Color.Gray, fontSize = 11.sp)
+                    val titleText = when {
+                        textoBusqueda.isNotEmpty() -> "Resultados para \"${textoBusqueda}\""
+                        categoriaSeleccionada != null -> "Categoría: ${categoriaSeleccionada}"
+                        marcaSeleccionada != null -> "Marca: ${marcaSeleccionada}"
+                        else -> "Recomendados para ti"
+                    }
+                    Text(titleText, color = Color.White, fontWeight = FontWeight.Black, fontSize = 18.sp)
+                    Text("${productosAMostrar.size} productos", color = ColorGalyRed, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
+            }
+
+            if (productosAMostrar.isEmpty() && (textoBusqueda.isNotEmpty() || categoriaSeleccionada != null || marcaSeleccionada != null)) {
+                item(span = { GridItemSpan(2) }) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(40.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(Icons.Default.SearchOff, null, tint = Color.Gray, modifier = Modifier.size(48.dp))
+                        Spacer(Modifier.height(12.dp))
+                        Text("No se encontraron productos", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text("Prueba buscando por otra marca o categoría", color = Color.Gray, fontSize = 12.sp, textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(16.dp))
+                        Button(
+                            onClick = { 
+                                textoBusqueda = ""
+                                categoriaSeleccionada = null
+                                marcaSeleccionada = null
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = ColorGalyRed)
+                        ) {
+                            Text("Limpiar filtros", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
             }
 
@@ -528,7 +596,6 @@ fun HomeScreen(
                 ServiceBannerSection()
             }
 
-            // SOPORTE TÉCNICO CON IMAGEN (RESTAURADO)
             item(span = { GridItemSpan(2) }) {
                 Surface(
                     modifier = Modifier
@@ -560,7 +627,6 @@ fun HomeScreen(
                 }
             }
 
-            // ASISTENTE AI GALY
             item(span = { GridItemSpan(2) }) {
                 AIAssistantBanner(onClick = alIrAChatAi)
             }
@@ -569,6 +635,107 @@ fun HomeScreen(
                 FooterProfesional()
             }
         }
+
+        if (showFilterSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showFilterSheet = false },
+                sheetState = rememberModalBottomSheetState(),
+                containerColor = Color(0xFF1E1E1E)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        "Filtrar y Ordenar Productos",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
+
+                    Text("Ordenar por:", color = Color.Gray, fontSize = 14.sp)
+
+                    val opcionesOrden = listOf(
+                        "DEFECTO" to "Recomendados",
+                        "PRECIO_MENOR" to "Menor precio a mayor",
+                        "PRECIO_MAYOR" to "Mayor precio a menor",
+                        "OFERTAS" to "Mayores ofertas",
+                        "NOMBRE" to "Nombre (A-Z)"
+                    )
+
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        opcionesOrden.forEach { (clave, etiqueta) ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { ordenSeleccionado = clave }
+                                    .background(
+                                        if (ordenSeleccionado == clave) ColorGalyRed.copy(alpha = 0.2f) else Color.Transparent,
+                                        RoundedCornerShape(12.dp)
+                                    )
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = ordenSeleccionado == clave,
+                                    onClick = { ordenSeleccionado = clave },
+                                    colors = RadioButtonDefaults.colors(selectedColor = ColorGalyRed)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(etiqueta, color = Color.White, fontSize = 14.sp)
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Solo productos con stock disponible", color = Color.White, fontSize = 14.sp)
+                        Switch(
+                            checked = soloEnStock,
+                            onCheckedChange = { soloEnStock = it },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = ColorGalyRed
+                            )
+                        )
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    Button(
+                        onClick = { showFilterSheet = false },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = ColorGalyRed),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Aplicar Filtros", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MoreOptionItem(icon: ImageVector, title: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .background(Color(0xFF1A1A1A), RoundedCornerShape(16.dp))
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, tint = Color.White, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(16.dp))
+        Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
     }
 }
 
@@ -642,23 +809,12 @@ fun FooterProfesional() {
 }
 
 @Composable
-fun MoreOptionItem(icon: ImageVector, title: String, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() }
-            .background(Color(0xFF1A1A1A), RoundedCornerShape(16.dp))
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(icon, null, tint = Color.White, modifier = Modifier.size(22.dp))
-        Spacer(Modifier.width(16.dp))
-        Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-    }
-}
-
-@Composable
 fun FlashSaleSection(productos: List<Producto>, onProductClick: (Producto) -> Unit) {
+    val ofertasValidas = remember(productos) {
+        productos.filter { it.id > 0 && (it.descuento != null && it.descuento > 0 || it.precioOferta < it.precioNormal) && it.stock > 0 }
+    }
+    if (ofertasValidas.isEmpty()) return
+
     Column(modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
@@ -668,17 +824,16 @@ fun FlashSaleSection(productos: List<Producto>, onProductClick: (Producto) -> Un
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.FlashOn, null, tint = Color.Yellow, modifier = Modifier.size(24.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("OFERTAS FLASH", fontSize = 20.sp, fontWeight = FontWeight.Black, color = Color.White)
+                Text("OFERTAS ACTIVAS", fontSize = 20.sp, fontWeight = FontWeight.Black, color = Color.White)
             }
-            // Componente de tiempo aislado para evitar lag
-            TimerBadge()
+            Text("${ofertasValidas.size} productos", color = Color.LightGray, fontSize = 12.sp)
         }
         
         LazyRow(
             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(items = productos, key = { it.id }) { prod ->
+            items(items = ofertasValidas, key = { it.id }) { prod ->
                 FlashSaleCard(prod, onProductClick)
             }
         }
@@ -686,38 +841,7 @@ fun FlashSaleSection(productos: List<Producto>, onProductClick: (Producto) -> Un
 }
 
 @Composable
-fun TimerBadge() {
-    var tiempoRestante by remember { mutableLongStateOf(2 * 60 * 60 * 1000L + 45 * 60 * 1000L) }
-    LaunchedEffect(Unit) {
-        while (tiempoRestante > 0) {
-            delay(1000)
-            tiempoRestante -= 1000
-        }
-    }
-    val h = (tiempoRestante / 3600000)
-    val m = (tiempoRestante % 3600000) / 60000
-    val s = (tiempoRestante % 60000) / 1000
-    val timer = String.format("%02d:%02d:%02d", h, m, s)
-
-    Surface(color = ColorGalyRed, shape = RoundedCornerShape(6.dp)) {
-        Text(
-            text = timer, 
-            color = Color.White, 
-            fontWeight = FontWeight.Black, 
-            fontSize = 12.sp, 
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-        )
-    }
-}
-
-@Composable
 fun FlashSaleCard(producto: Producto, onClick: (Producto) -> Unit) {
-    val scope = rememberCoroutineScope()
-    // Necesitamos acceder al snackbarHostState y alIrAlCarrito, 
-    // pero están en el scope de HomeScreen. Por ahora usaremos Toast 
-    // o pasaremos la acción. Para hacerlo rápido y que "funcione", 
-    // aseguramos la llamada al CartManager.
-    
     val context = LocalContext.current
 
     Card(
@@ -745,16 +869,23 @@ fun FlashSaleCard(producto: Producto, onClick: (Producto) -> Unit) {
                     shape = RoundedCornerShape(bottomEnd = 12.dp),
                     modifier = Modifier.align(Alignment.TopStart)
                 ) {
-                    Text("-${producto.descuento ?: 25}%", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(6.dp))
+                    Text("-${producto.descuento ?: 0}%", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(6.dp))
                 }
             }
             Spacer(Modifier.height(10.dp))
             Text(producto.nombre, color = Color.White, fontSize = 13.sp, maxLines = 1, fontWeight = FontWeight.Bold)
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
-                Text("S/ ${producto.precioOferta.toInt()}", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Black)
+                Column {
+                    Text(
+                        "S/ ${producto.precioNormal.toInt()}",
+                        color = Color.Gray,
+                        fontSize = 10.sp,
+                        style = TextStyle(textDecoration = TextDecoration.LineThrough)
+                    )
+                    Text("S/ ${producto.precioOferta.toInt()}", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Black)
+                }
                 Spacer(Modifier.weight(1f))
                 
-                // Botón Carrito Circular (Ajustado para que funcione igual que el resto)
                 Surface(
                     onClick = { 
                         CartManager.agregarProducto(context, producto, 1)

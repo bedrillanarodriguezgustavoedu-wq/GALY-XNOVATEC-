@@ -36,7 +36,7 @@ fun CategoriasRapidas(seleccionada: String?, alSeleccionar: (String) -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(20.dp),
             contentPadding = PaddingValues(horizontal = 16.dp)
         ) {
-            items(categorias) { cat ->
+            items(items = categorias, key = { it }) { cat ->
                 val es = seleccionada?.equals(cat, ignoreCase = true) == true
                 val icon = when {
                     cat.contains("Laptop", true) -> Icons.Default.Laptop

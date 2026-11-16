@@ -2,11 +2,13 @@ package com.galyxnovatec.tienda.ui.screens
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material3.*
@@ -15,41 +17,32 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.delay
-
-import android.content.Intent
-import android.net.Uri
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.material.icons.automirrored.filled.Chat
-import androidx.compose.ui.platform.LocalContext
+import com.galyxnovatec.tienda.data.openContactWhatsApp
+import com.galyxnovatec.tienda.data.repository.ProductRepository
 import com.galyxnovatec.tienda.ui.theme.ColorGalyRed
-import com.airbnb.lottie.compose.*
+import kotlinx.coroutines.delay
 
 @Composable
 fun SuccessScreen(
     alTerminar: () -> Unit
 ) {
     val context = LocalContext.current
+    val contactInfo = ProductRepository.informacionContacto
     var animado by remember { mutableStateOf(false) }
-    
-    // Nueva URL de Lottie más estable (Check de éxito premium)
-    val composition by rememberLottieComposition(LottieCompositionSpec.Url("https://lottie.host/86060c2b-e77a-4286-8d60-7e44a4ec166d/K8m8f8P5nK.json"))
-    val progress by animateLottieCompositionAsState(
-        composition,
-        iterations = LottieConstants.IterateForever
-    )
 
     LaunchedEffect(Unit) {
-        delay(300)
+        ProductRepository.sincronizarInformacionContacto()
+        delay(200)
         animado = true
     }
 
     val scale by animateFloatAsState(
-        targetValue = if (animado) 1f else 0.5f,
+        targetValue = if (animado) 1f else 0.4f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
         label = "scale"
     )
@@ -62,18 +55,23 @@ fun SuccessScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        // Icono de Check Animado Lottie Premium
-        Box(
+        // Icono de Éxito Nativo Animado (Instantáneo y 100% Confiable sin requerir internet)
+        Surface(
             modifier = Modifier
-                .size(200.dp)
+                .size(160.dp)
                 .scale(scale),
-            contentAlignment = Alignment.Center
+            shape = CircleShape,
+            color = ColorGalyRed,
+            shadowElevation = 16.dp
         ) {
-            LottieAnimation(
-                composition = composition,
-                progress = { progress },
-                modifier = Modifier.fillMaxSize()
-            )
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = "Éxito",
+                    tint = Color.White,
+                    modifier = Modifier.size(90.dp)
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(40.dp))
@@ -92,7 +90,7 @@ fun SuccessScreen(
                 )
                 
                 Text(
-                    text = "Gracias por confiar en GALY XNOVATEC. Tu tecnología favorita está en proceso de envío.",
+                    text = "Gracias por confiar en GALY XNOVATEC. Tu tecnología favorita está en proceso de despacho.",
                     fontSize = 15.sp,
                     color = Color.LightGray,
                     textAlign = TextAlign.Center,
@@ -102,7 +100,7 @@ fun SuccessScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(60.dp))
+        Spacer(modifier = Modifier.height(50.dp))
 
         // Tarjeta de Información de Próximos Pasos
         Card(
@@ -120,8 +118,10 @@ fun SuccessScreen(
                 Spacer(Modifier.height(16.dp))
                 Button(
                     onClick = {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/51978104136?text=Hola GALY, ya realicé mi pedido. ¿Me confirman el estado?"))
-                        context.startActivity(intent)
+                        context.openContactWhatsApp(
+                            contactInfo?.whatsapp,
+                            "Hola GALY, ya realicé mi pedido. ¿Me confirman el estado?"
+                        )
                     },
                     modifier = Modifier.fillMaxWidth().height(50.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366)),

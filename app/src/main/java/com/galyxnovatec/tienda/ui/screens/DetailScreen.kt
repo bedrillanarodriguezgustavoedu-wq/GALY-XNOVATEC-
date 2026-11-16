@@ -64,6 +64,7 @@ fun DetailScreen(
     alIrAlCarrito: () -> Unit,
     alAgregarAlCarrito: (Producto, Int) -> Unit,
     alComprarAhora: (Producto, Int) -> Unit,
+    alReservar: (Producto, Int) -> Unit,
     alSeleccionarProductoRelacionado: (Producto) -> Unit
 ) {
     val context = LocalContext.current
@@ -125,56 +126,65 @@ fun DetailScreen(
                 color = Color.Black,
                 border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
             ) {
-                Row(
+                Column(
                     modifier = Modifier
-                        .padding(horizontal = 20.dp, vertical = 16.dp)
+                        .padding(horizontal = 20.dp, vertical = 12.dp)
                         .navigationBarsPadding(),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Precio Final", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
-                        Text(
-                            "S/ ${(producto.precioOferta * cantidad).toInt()}",
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color.White
-                        )
-                    }
-                    
-                    IconButton(
-                        onClick = { 
-                            alAgregarAlCarrito(producto, cantidad)
-                            scope.launch {
-                                snackbarHostState.showSnackbar(
-                                    message = "✅ ¡Tu producto ya está en el carrito!",
-                                    actionLabel = "VER CARRITO",
-                                    duration = SnackbarDuration.Short
-                                ).let { result ->
-                                    if (result == SnackbarResult.ActionPerformed) {
-                                        alIrAlCarrito()
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Precio Final", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                            Text(
+                                "S/ ${(producto.precioOferta * cantidad).toInt()}",
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White
+                            )
+                        }
+
+                        IconButton(
+                            onClick = {
+                                alAgregarAlCarrito(producto, cantidad)
+                                scope.launch {
+                                    snackbarHostState.showSnackbar(
+                                        message = "✅ ¡Tu producto ya está en el carrito!",
+                                        actionLabel = "VER CARRITO",
+                                        duration = SnackbarDuration.Short
+                                    ).let { result ->
+                                        if (result == SnackbarResult.ActionPerformed) alIrAlCarrito()
                                     }
                                 }
-                            }
-                        },
-                        modifier = Modifier
-                            .size(54.dp)
-                            .background(Color(0xFF1A1A1A), RoundedCornerShape(16.dp))
-                    ) {
-                        Icon(Icons.Default.AddShoppingCart, null, tint = Color.White)
+                            },
+                            modifier = Modifier
+                                .size(54.dp)
+                                .background(Color(0xFF1A1A1A), RoundedCornerShape(16.dp))
+                        ) {
+                            Icon(Icons.Default.AddShoppingCart, null, tint = Color.White)
+                        }
+
+                        Spacer(Modifier.width(12.dp))
+
+                        Button(
+                            onClick = { alComprarAhora(producto, cantidad) },
+                            modifier = Modifier
+                                .height(54.dp)
+                                .weight(1.5f)
+                                .graphicsLayer { scaleX = scale; scaleY = scale },
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = ColorGalyRed)
+                        ) {
+                            Text("COMPRAR AHORA", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                        }
                     }
-                    
-                    Spacer(Modifier.width(12.dp))
-                    
-                    Button(
-                        onClick = { alComprarAhora(producto, cantidad) },
-                        modifier = Modifier
-                            .height(54.dp)
-                            .weight(1.5f)
-                            .graphicsLayer { scaleX = scale; scaleY = scale },
-                        shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = ColorGalyRed)
+                    OutlinedButton(
+                        onClick = { alReservar(producto, cantidad) },
+                        modifier = Modifier.fillMaxWidth(),
+                        border = BorderStroke(1.dp, ColorGalyRed)
                     ) {
-                        Text("COMPRAR AHORA", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                        Icon(Icons.Default.BookmarkAdd, contentDescription = null, tint = ColorGalyRed)
+                        Spacer(Modifier.width(8.dp))
+                        Text("APARTAR POR 24 HORAS", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
             }

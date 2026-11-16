@@ -33,6 +33,11 @@ sealed class Screen(val route: String) {
     object AdminBanners : Screen("admin_banners")
     object AdminUsers : Screen("admin_users")
     object AdminCategories : Screen("admin_categories")
+    object AdminBrands : Screen("admin_brands")
+    object AdminContact : Screen("admin_contact")
+    object AdminNosotros : Screen("admin_nosotros")
+    object About : Screen("about")
+    object Reservations : Screen("reservations")
     object AdminProducts : Screen("admin_products")
     object EditProduct : Screen("edit_product/{productId}") {
         fun createRoute(productId: Int) = "edit_product/$productId"
@@ -41,8 +46,11 @@ sealed class Screen(val route: String) {
     object YapePayment : Screen("yape_payment")
     object UserData : Screen("user_data")
     object AdminOrders : Screen("admin_orders")
+    object AdminOffers : Screen("admin_offers")
     object AdminCoupons : Screen("admin_coupons")
+    object Cupones : Screen("cupones")
     object AdminNotifications : Screen("admin_notifications")
+    object Notificaciones : Screen("notificaciones")
     object AdminTickets : Screen("admin_tickets")
     object Tracking : Screen("tracking/{orderId}") {
         fun createRoute(orderId: Int) = "tracking/$orderId"
@@ -50,4 +58,5 @@ sealed class Screen(val route: String) {
     object PaymentWebView : Screen("payment_webview?url={url}") {
         fun createRoute(url: String) = "payment_webview?url=${URLEncoder.encode(url, "UTF-8")}"
     }
+    object PaymentMethods : Screen("payment_methods")
 }

@@ -338,7 +338,7 @@ fun AddProductScreen(
                     val displayImage = if (imageUri != null) imageUri 
                                        else if (imagenUrl.isNotEmpty()) {
                                            if (imagenUrl.startsWith("http")) imagenUrl 
-                                           else "${BuildConfig.BASE_URL}img/$imagenUrl"
+                                           else "${RetrofitClient.getEffectiveBaseUrl()}img/$imagenUrl"
                                        } else null
 
                     if (displayImage == null) {

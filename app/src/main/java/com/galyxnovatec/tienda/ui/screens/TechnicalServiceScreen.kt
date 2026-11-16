@@ -1,7 +1,5 @@
 package com.galyxnovatec.tienda.ui.screens
 
-import android.content.Intent
-import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -34,8 +32,11 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.galyxnovatec.tienda.BuildConfig
 import com.galyxnovatec.tienda.R
+import com.galyxnovatec.tienda.data.dialContactNumber
+import com.galyxnovatec.tienda.data.openContactWhatsApp
 import com.galyxnovatec.tienda.data.manager.AuthManager
 import com.galyxnovatec.tienda.data.model.ServicioTecnico
+import com.galyxnovatec.tienda.data.repository.ProductRepository
 import com.galyxnovatec.tienda.data.network.RetrofitClient
 import com.galyxnovatec.tienda.ui.theme.ColorGalyRed
 import kotlinx.coroutines.launch
@@ -48,11 +49,13 @@ fun TechnicalServiceScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val user = AuthManager.currentUser
-    val numeroGaly = "51978104136"
+    val contactInfo = ProductRepository.informacionContacto
     
     var servicios by remember { mutableStateOf<List<ServicioTecnico>>(emptyList()) }
     var misTickets by remember { mutableStateOf<List<ServicioTecnico>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+    var isCreatingTicket by remember { mutableStateOf(false) }
     
     // Estados para nuevo ticket
     var showAddDialog by remember { mutableStateOf(false) }
@@ -60,12 +63,13 @@ fun TechnicalServiceScreen(
     var descripcionFalla by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
+        ProductRepository.sincronizarInformacionContacto()
         try {
             servicios = RetrofitClient.instance.getServiciosTecnicos()
-            user?.id?.let {
-                misTickets = RetrofitClient.instance.getUserTickets(it)
-            }
-        } catch (e: Exception) { }
+            misTickets = user?.let { RetrofitClient.instance.getUserTickets(it.id) }.orEmpty()
+        } catch (e: Exception) {
+            loadError = e.message ?: "No se pudo cargar la información de soporte."
+        }
         isLoading = false
     }
     
@@ -166,6 +170,21 @@ fun TechnicalServiceScreen(
                     Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = ColorGalyRed)
                     }
+                } else if (loadError != null) {
+                    Text(loadError.orEmpty(), color = Color(0xFFFF8A80))
+                    TextButton(onClick = {
+                        scope.launch {
+                            isLoading = true
+                            loadError = null
+                            try {
+                                servicios = RetrofitClient.instance.getServiciosTecnicos()
+                                misTickets = user?.let { RetrofitClient.instance.getUserTickets(it.id) }.orEmpty()
+                            } catch (e: Exception) {
+                                loadError = e.message ?: "No se pudo cargar la información de soporte."
+                            }
+                            isLoading = false
+                        }
+                    }) { Text("Reintentar") }
                 } else {
                     servicios.forEach { servicio ->
                         ModernServiceItem(
@@ -179,8 +198,7 @@ fun TechnicalServiceScreen(
                             },
                             onClick = {
                                 val mensaje = "Hola GALY, necesito información sobre el servicio: ${servicio.nombre}"
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$numeroGaly?text=${Uri.encode(mensaje)}"))
-                                context.startActivity(intent)
+                                context.openContactWhatsApp(contactInfo?.whatsapp, mensaje)
                             }
                         )
                     }
@@ -210,11 +228,11 @@ fun TechnicalServiceScreen(
                                 if (user != null) showAddDialog = true
                                 else {
                                     val mensaje = "Hola GALY, necesito soporte técnico para mi equipo."
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$numeroGaly?text=${Uri.encode(mensaje)}"))
-                                    context.startActivity(intent)
+                                    context.openContactWhatsApp(contactInfo?.whatsapp, mensaje)
                                 }
                             },
                             modifier = Modifier.fillMaxWidth().height(60.dp),
+                            enabled = !isCreatingTicket,
                             colors = ButtonDefaults.buttonColors(containerColor = if(user != null) ColorGalyRed else Color(0xFF25D366)),
                             shape = RoundedCornerShape(16.dp)
                         ) {
@@ -227,8 +245,7 @@ fun TechnicalServiceScreen(
 
                         TextButton(
                             onClick = { 
-                                val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:978104136"))
-                                context.startActivity(intent)
+                                context.dialContactNumber(contactInfo?.telefonoPrincipal)
                             },
                             modifier = Modifier.fillMaxWidth().height(50.dp)
                         ) {
@@ -271,8 +288,10 @@ fun TechnicalServiceScreen(
                 Button(
                     onClick = {
                         scope.launch {
+                        isCreatingTicket = true
+                        try {
                             val res = RetrofitClient.instance.createTicket(
-                                mapOf("usuario_id" to user!!.id, "equipo_modelo" to modeloEquipo, "descripcion_falla" to descripcionFalla)
+                                mapOf("usuario_id" to user!!.id, "equipo_modelo" to modeloEquipo.trim(), "descripcion_falla" to descripcionFalla.trim())
                             )
                             if (res["success"] == true) {
                                 Toast.makeText(context, "✅ Solicitud enviada", Toast.LENGTH_SHORT).show()
@@ -280,12 +299,25 @@ fun TechnicalServiceScreen(
                                 modeloEquipo = ""
                                 descripcionFalla = ""
                                 user?.id?.let { misTickets = RetrofitClient.instance.getUserTickets(it) }
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    res["message"]?.toString() ?: "No se pudo enviar la solicitud.",
+                                    Toast.LENGTH_LONG
+                                ).show()
                             }
+                        } catch (e: Exception) {
+                            Toast.makeText(context, e.message ?: "No se pudo enviar la solicitud.", Toast.LENGTH_LONG).show()
+                        } finally {
+                            isCreatingTicket = false
                         }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = ColorGalyRed)
+                    }
+                },
+                enabled = modeloEquipo.isNotBlank() && descripcionFalla.isNotBlank() && !isCreatingTicket,
+                colors = ButtonDefaults.buttonColors(containerColor = ColorGalyRed)
                 ) {
-                    Text("ENVIAR SOLICITUD")
+                if (isCreatingTicket) CircularProgressIndicator(Modifier.size(18.dp), color = Color.White)
+                else Text("ENVIAR SOLICITUD")
                 }
             }
         )
@@ -335,7 +367,32 @@ fun TicketStatusCard(ticket: ServicioTecnico) {
                 Spacer(Modifier.width(16.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(ticket.equipoModelo ?: "Equipo en Reparación", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 16.sp)
-                    Text("Estado: ${ticket.estado ?: "Pendiente"}", color = Color.Gray, fontSize = 12.sp)
+                    if (!ticket.falla.isNullOrBlank()) {
+                        Text(ticket.falla, color = Color.LightGray, fontSize = 13.sp, modifier = Modifier.padding(vertical = 2.dp))
+                    }
+                    Surface(
+                        color = when(ticket.estado) {
+                            "Listo" -> Color(0xFF00FF41).copy(alpha = 0.2f)
+                            "Reparando" -> Color.Cyan.copy(alpha = 0.2f)
+                            "En Diagnostico" -> Color.Yellow.copy(alpha = 0.2f)
+                            else -> ColorGalyRed.copy(alpha = 0.2f)
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.padding(top = 4.dp)
+                    ) {
+                        Text(
+                            text = if (ticket.estado.isNullOrBlank()) "Recibido" else ticket.estado,
+                            color = when(ticket.estado) {
+                                "Listo" -> Color(0xFF00FF41)
+                                "Reparando" -> Color.Cyan
+                                "En Diagnostico" -> Color.Yellow
+                                else -> ColorGalyRed
+                            },
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        )
+                    }
                 }
                 val costo = ticket.costoEstimado ?: 0.0
                 if (costo > 0) {
@@ -350,10 +407,10 @@ fun TicketStatusCard(ticket: ServicioTecnico) {
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     if (!ticket.imagenIngreso.isNullOrEmpty()) {
-                        EvidencePhotoItem("Ingreso", "${BuildConfig.BASE_URL}img/${ticket.imagenIngreso}")
+                        EvidencePhotoItem("Ingreso", "${RetrofitClient.getEffectiveBaseUrl()}img/${ticket.imagenIngreso}")
                     }
                     if (!ticket.imagenListo.isNullOrEmpty()) {
-                        EvidencePhotoItem("Listo", "${BuildConfig.BASE_URL}img/${ticket.imagenListo}", Color(0xFF00FF41))
+                        EvidencePhotoItem("Listo", "${RetrofitClient.getEffectiveBaseUrl()}img/${ticket.imagenListo}", Color(0xFF00FF41))
                     }
                 }
             }

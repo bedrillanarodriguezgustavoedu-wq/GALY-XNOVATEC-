@@ -4,6 +4,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import android.content.Intent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -33,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.galyxnovatec.tienda.R
+import com.galyxnovatec.tienda.data.openContactWhatsApp
 import com.galyxnovatec.tienda.data.manager.AuthManager
 import com.galyxnovatec.tienda.data.repository.ProductRepository
 import com.galyxnovatec.tienda.ui.theme.ColorGalyRed
@@ -51,6 +53,8 @@ fun ProfileScreen(
     alIrACupones: () -> Unit = {},
     alIrANotificaciones: () -> Unit = {},
     alIrAServicioTecnico: () -> Unit,
+    alIrANosotros: () -> Unit = {},
+    alIrAReservas: () -> Unit = {},
     alIrAPanelAdmin: () -> Unit,
     alCerrarSesion: () -> Unit,
     alVolver: () -> Unit
@@ -60,6 +64,11 @@ fun ProfileScreen(
     var mostrarDialogoConfirmacion by remember { mutableStateOf(false) }
     var isUploading by remember { mutableStateOf(false) }
     val user = AuthManager.currentUser
+    val contactInfo = ProductRepository.informacionContacto
+
+    LaunchedEffect(Unit) {
+        ProductRepository.sincronizarInformacionContacto()
+    }
 
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -285,6 +294,8 @@ fun ProfileScreen(
                         ProfileRowItem(icon = Icons.Default.Favorite, title = "Mis Favoritos", onClick = alIrAMisFavoritos)
                         DividerCustom()
                         ProfileRowItem(icon = Icons.Default.History, title = "Compras Recientes", onClick = alIrAComprasRecientes)
+                        DividerCustom()
+                        ProfileRowItem(icon = Icons.Default.Bookmark, title = "Mis reservas", onClick = alIrAReservas)
                     }
                 }
 
@@ -302,6 +313,34 @@ fun ProfileScreen(
                         ProfileRowItem(icon = Icons.Default.CreditCard, title = "Métodos de Pago", onClick = alIrAMetodosPago)
                         DividerCustom()
                         ProfileRowItem(icon = Icons.Default.ConfirmationNumber, title = "Cupones", onClick = alIrACupones)
+                        DividerCustom()
+                        ProfileRowItem(icon = Icons.Default.Info, title = "Centro de Ayuda (FAQ)", onClick = {
+                            Toast.makeText(
+                                context,
+                                contactInfo?.telefonoPrincipal?.let { "Dudas: $it" }
+                                    ?: "El teléfono de contacto no está disponible.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        })
+                        DividerCustom()
+                        ProfileRowItem(icon = Icons.Default.Map, title = "Nuestras Tiendas", onClick = {
+                            val storeQuery = listOfNotNull(
+                                contactInfo?.nombreEmpresa,
+                                contactInfo?.direccion,
+                                contactInfo?.provincia,
+                                contactInfo?.departamento,
+                                contactInfo?.pais
+                            ).filter(String::isNotBlank).joinToString(", ")
+                            if (storeQuery.isBlank()) {
+                                Toast.makeText(context, "La dirección de la tienda no está configurada.", Toast.LENGTH_LONG).show()
+                                return@ProfileRowItem
+                            }
+                            val gmmIntentUri = Uri.parse("geo:0,0?q=${Uri.encode(storeQuery)}")
+                            val mapIntent = Intent(Intent.ACTION_VIEW, gmmIntentUri)
+                            context.startActivity(mapIntent)
+                        })
+                        DividerCustom()
+                        ProfileRowItem(icon = Icons.Default.Info, title = "Sobre GALY", onClick = alIrANosotros)
                     }
                 }
 
@@ -316,9 +355,30 @@ fun ProfileScreen(
                     Column {
                         ProfileRowItem(icon = Icons.Default.Notifications, title = "Notificaciones", onClick = alIrANotificaciones)
                         DividerCustom()
+                        ProfileRowItem(icon = Icons.Default.Share, title = "Invitar a un amigo", onClick = {
+                            val shareIntent = Intent().apply {
+                                action = Intent.ACTION_SEND
+                                putExtra(Intent.EXTRA_TEXT, "🚀 ¡Descarga la App de GALY XNOVATEC y obtén descuentos exclusivos en tecnología! https://galyxnovatec.com/download")
+                                type = "text/plain"
+                            }
+                            context.startActivity(Intent.createChooser(shareIntent, "Compartir App GALY"))
+                        })
+                        DividerCustom()
                         ProfileRowItem(icon = Icons.AutoMirrored.Filled.Chat, title = "Soporte Técnico", onClick = alIrAServicioTecnico)
                         DividerCustom()
+                        ProfileRowItem(icon = Icons.Default.Star, title = "Calificar App", onClick = {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=${context.packageName}"))
+                            context.startActivity(intent)
+                        })
+                        DividerCustom()
                         ProfileRowItem(icon = Icons.Default.Settings, title = "Configuración")
+                        DividerCustom()
+                        ProfileRowItem(icon = Icons.AutoMirrored.Filled.Chat, title = "Hablar con Gustavo (CEO)", onClick = {
+                            context.openContactWhatsApp(
+                                contactInfo?.whatsapp,
+                                "Hola, soy cliente de GALY y me gustaría contactarte."
+                            )
+                        }, tint = Color(0xFF25D366))
                     }
                 }
                 
@@ -338,6 +398,10 @@ fun ProfileScreen(
                         )
                     }
                 }
+
+                // --- PROGRAMA DE EMBAJADORES GALY (NUEVO) ---
+                Spacer(modifier = Modifier.height(24.dp))
+                AmbassadorCard(user?.referralCode ?: "GALY-PROMO")
 
                 Spacer(modifier = Modifier.height(40.dp))
                 
@@ -384,6 +448,70 @@ fun ProfileScreen(
             shape = RoundedCornerShape(24.dp),
             containerColor = Color.White
         )
+    }
+}
+
+@Composable
+fun AmbassadorCard(code: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F1A0F)), // Verde oscuro sutil
+        border = BorderStroke(1.dp, Color(0xFF00FF41).copy(alpha = 0.2f))
+    ) {
+        Column(modifier = Modifier.padding(24.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    modifier = Modifier.size(40.dp),
+                    shape = CircleShape,
+                    color = Color(0xFF00FF41).copy(alpha = 0.1f)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.GroupAdd, null, tint = Color(0xFF00FF41), modifier = Modifier.size(20.dp))
+                    }
+                }
+                Spacer(Modifier.width(16.dp))
+                Column {
+                    Text("Programa de Embajadores", color = Color.White, fontWeight = FontWeight.Black, fontSize = 16.sp)
+                    Text("Gana puntos invitando amigos", color = Color.Gray, fontSize = 12.sp)
+                }
+            }
+            
+            Spacer(Modifier.height(20.dp))
+            
+            Text("Tu código de referido:", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                color = Color.Black,
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(code, color = Color(0xFF00FF41), fontWeight = FontWeight.Black, fontSize = 18.sp, letterSpacing = 2.sp)
+                    Icon(
+                        Icons.Default.ContentCopy, 
+                        null, 
+                        tint = Color.Gray, 
+                        modifier = Modifier.size(18.dp).clickable { /* Copy logic */ }
+                    )
+                }
+            }
+            
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "Comparte este código y obtén 50 Puntos Galy por cada amigo que realice su primera compra.",
+                color = Color.Gray,
+                fontSize = 11.sp,
+                lineHeight = 16.sp
+            )
+        }
     }
 }
 

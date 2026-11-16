@@ -8,20 +8,20 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.galyxnovatec.tienda.R
@@ -37,7 +37,9 @@ fun TarjetaProducto(
     alAgregarRapido: (Producto) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    val esFavorito = FavoriteManager.esFavorito(producto)
+    val esFavorito = remember(producto.id, FavoriteManager.items.size) {
+        FavoriteManager.esFavorito(producto)
+    }
 
     Card(
         modifier = modifier
@@ -53,13 +55,15 @@ fun TarjetaProducto(
                     model = ImageRequest.Builder(LocalContext.current)
                         .data(producto.getFullImageUrl())
                         .crossfade(true)
-                        .size(300, 300) // Limitamos la resolución en memoria para evitar lag
+                        // Sin .size() forzado: Coil ajusta la decodificación al tamaño real
+                        // de la tarjeta (antes se decodificaba a 260x260 y se estiraba,
+                        // viéndose borroso).
                         .build(),
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize().padding(12.dp).clip(RoundedCornerShape(16.dp)),
                     contentScale = ContentScale.Fit,
-                    error = painterResource(R.drawable.logo_2), // Logo de respaldo si falla
-                    placeholder = painterResource(R.drawable.logo_2) // Mientras carga
+                    error = painterResource(R.drawable.logo_2),
+                    placeholder = painterResource(R.drawable.logo_2)
                 )
                 
                 // Botón Favorito
@@ -75,7 +79,7 @@ fun TarjetaProducto(
                     )
                 }
 
-                if (producto.descuento != null && producto.descuento > 0) {
+                if (producto.enOferta && producto.descuento != null && producto.descuento > 0) {
                     Surface(
                         color = ColorGalyRed,
                         shape = CircleShape,
@@ -125,7 +129,7 @@ fun TarjetaProducto(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column {
-                        if (producto.descuento != null && producto.descuento > 0) {
+                        if (producto.enOferta && producto.descuento != null && producto.descuento > 0) {
                             Text(
                                 "S/ ${producto.precioNormal.toInt()}",
                                 fontSize = 10.sp,
@@ -141,7 +145,6 @@ fun TarjetaProducto(
                         )
                     }
                     
-                    // Botón Carrito Circular Estilo Temu
                     Surface(
                         onClick = { alAgregarRapido(producto) },
                         modifier = Modifier.size(34.dp),

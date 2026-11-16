@@ -3,6 +3,7 @@ package com.galyxnovatec.tienda.data.model
 import android.net.Uri
 import com.galyxnovatec.tienda.BuildConfig
 import com.galyxnovatec.tienda.R
+import com.galyxnovatec.tienda.data.network.RetrofitClient
 import com.google.gson.annotations.SerializedName
 
 data class Producto(
@@ -24,6 +25,8 @@ data class Producto(
     val descripcion: String? = null,
     @SerializedName("disponible")
     val disponible: Boolean = true,
+    @SerializedName("en_oferta")
+    val enOferta: Boolean = false,
     @SerializedName("tiene_envio_gratis")
     val tieneEnvioGratis: Boolean = false,
     @SerializedName("etiqueta_especial")
@@ -57,17 +60,18 @@ data class Producto(
         
         val cleanUrl = imagenUrl.trim()
         
-        // Si ya es un enlace externo de internet (que no sea nuestra IP local), lo devolvemos tal cual
-        if (cleanUrl.startsWith("http") && !cleanUrl.contains("10.0.2.2") && !cleanUrl.contains("192.168.")) {
+        // Si ya es un enlace externo de internet, lo devolvemos tal cual
+        if (cleanUrl.startsWith("http") && !cleanUrl.contains("10.0.2.2") && !cleanUrl.contains("localhost") && !cleanUrl.contains("192.168.")) {
             return cleanUrl
         }
         
-        // Extraemos solo el nombre del archivo para reconstruir la URL con la IP dinámica (BuildConfig.BASE_URL)
+        // Extraemos solo el nombre del archivo para reconstruir la URL con la BASE_URL actual (dinámica)
         val fileName = if (cleanUrl.contains("/")) cleanUrl.substringAfterLast("/") else cleanUrl
         val safeName = Uri.encode(fileName)
         
-        // Usamos la BASE_URL configurada en local.properties (ej: http://192.168.137.167/galy_api/)
-        return "${BuildConfig.BASE_URL}img/$safeName"
+        // Sin parámetro ?v=: la URL es estable y Coil reutiliza la caché de disco.
+        // El servidor envía ETag/Last-Modified, así que si la imagen cambia se refresca sola.
+        return "${RetrofitClient.getEffectiveBaseUrl()}img/$safeName"
     }
 
     /**
@@ -81,12 +85,12 @@ data class Producto(
         imagenesSecundarias?.split(",")?.forEach { img ->
             val cleanImg = img.trim()
             if (cleanImg.isNotEmpty()) {
-                if (cleanImg.startsWith("http") && !cleanImg.contains("10.0.2.2") && !cleanImg.contains("192.168.")) {
+                if (cleanImg.startsWith("http") && !cleanImg.contains("10.0.2.2") && !cleanImg.contains("localhost") && !cleanImg.contains("192.168.")) {
                     list.add(cleanImg)
                 } else {
                     val fileName = if (cleanImg.contains("/")) cleanImg.substringAfterLast("/") else cleanImg
                     val safeName = Uri.encode(fileName)
-                    list.add("${BuildConfig.BASE_URL}img/$safeName")
+                    list.add("${RetrofitClient.getEffectiveBaseUrl()}img/$safeName")
                 }
             }
         }

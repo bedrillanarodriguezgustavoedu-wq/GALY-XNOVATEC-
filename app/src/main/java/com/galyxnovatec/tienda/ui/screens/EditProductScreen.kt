@@ -35,6 +35,7 @@ import coil.compose.AsyncImage
 import com.galyxnovatec.tienda.BuildConfig
 import com.galyxnovatec.tienda.R
 import com.galyxnovatec.tienda.data.model.Producto
+import com.galyxnovatec.tienda.data.network.RetrofitClient
 import com.galyxnovatec.tienda.data.repository.ProductRepository
 import com.galyxnovatec.tienda.ui.theme.ColorGalyRed
 import kotlinx.coroutines.launch
@@ -212,7 +213,7 @@ fun EditProductScreen(productId: Int, alVolver: () -> Unit) {
                             val url = secondaryUrls[index]
                             Box(modifier = Modifier.size(80.dp)) {
                                 val model = if (url.startsWith("http")) url 
-                                            else "${BuildConfig.BASE_URL}img/${Uri.encode(url)}"
+                                            else "${RetrofitClient.getEffectiveBaseUrl()}img/${Uri.encode(url)}"
                                 
                                 AsyncImage(
                                     model = model,
@@ -365,6 +366,7 @@ fun EditProductScreen(productId: Int, alVolver: () -> Unit) {
                             id = productId,
                             nombre = nombre,
                             marca = marca,
+                            categoria = categoria,
                             precioNormal = precioNormal.toDoubleOrNull() ?: 0.0,
                             precioOferta = precioOferta.toDoubleOrNull() ?: 0.0,
                             precioCompra = precioCompra.toDoubleOrNull() ?: 0.0,

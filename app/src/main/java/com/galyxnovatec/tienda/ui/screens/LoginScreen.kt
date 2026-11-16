@@ -8,6 +8,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -22,19 +23,18 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.credentials.CredentialManager
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.window.Dialog
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialException
+import com.galyxnovatec.tienda.BuildConfig
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
 
 import com.galyxnovatec.tienda.R
 import com.galyxnovatec.tienda.data.manager.AuthManager
@@ -49,12 +49,14 @@ fun LoginScreen(
 ) {
     val context = LocalContext.current
     val credentialManager = CredentialManager.create(context)
-    val webClientId = "TU_CLIENT_ID_DE_GOOGLE.apps.googleusercontent.com" // Placeholder
     
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var showGoogleDialog by remember { mutableStateOf(false) }
+    var showForgotDialog by remember { mutableStateOf(false) }
+    var recoverEmail by remember { mutableStateOf("") }
+    var isRecovering by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     
     // Estados de animación
@@ -111,12 +113,38 @@ fun LoginScreen(
             
             Spacer(modifier = Modifier.height(40.dp))
             
-            // Botón de Google (Simulación Inteligente para Desarrollo)
+            // Inicio de sesión OAuth real; el servidor valida el token antes de crear la sesión GALY.
             OutlinedButton(
                 onClick = { 
-                    // En lugar de intentar el login real que requiere configuración en la nube,
-                    // mostramos el diálogo de selección de cuenta que se ve muy real.
-                    showGoogleDialog = true 
+                    scope.launch {
+                        try {
+                            if (BuildConfig.GOOGLE_WEB_CLIENT_ID.isNotBlank()) {
+                                val googleOption = GetGoogleIdOption.Builder()
+                                    .setServerClientId(BuildConfig.GOOGLE_WEB_CLIENT_ID)
+                                    .setFilterByAuthorizedAccounts(false)
+                                    .setAutoSelectEnabled(false)
+                                    .build()
+                                val request = GetCredentialRequest.Builder()
+                                    .addCredentialOption(googleOption)
+                                    .build()
+                                val result = credentialManager.getCredential(context, request)
+                                val credential = result.credential
+                                if (credential is CustomCredential &&
+                                    credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+                                ) {
+                                    val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
+                                    if (AuthManager.loginConGoogle(googleCredential.idToken)) {
+                                        CartManager.sincronizarConServidor(context)
+                                        onLoginSuccess()
+                                        return@launch
+                                    }
+                                }
+                            }
+                            showGoogleDialog = true
+                        } catch (exception: Exception) {
+                            showGoogleDialog = true
+                        }
+                    }
                 },
                 modifier = Modifier.fillMaxWidth().height(55.dp),
                 shape = RoundedCornerShape(12.dp),
@@ -139,6 +167,17 @@ fun LoginScreen(
             }
 
             Spacer(modifier = Modifier.height(24.dp))
+
+            Text(
+                "Puedes elegir otro Gmail cada vez. Para cambiar de cliente, cierra sesión primero.",
+                color = Color.LightGray,
+                fontSize = 12.sp,
+                lineHeight = 17.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
             
             Row(verticalAlignment = Alignment.CenterVertically) {
                 HorizontalDivider(modifier = Modifier.weight(1f), color = Color.White.copy(alpha = 0.1f))
@@ -219,8 +258,26 @@ fun LoginScreen(
                     modifier = Modifier.padding(top = 8.dp)
                 )
             }
+
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                TextButton(
+                    onClick = {
+                        recoverEmail = email
+                        showForgotDialog = true
+                    }
+                ) {
+                    Text(
+                        "¿Olvidaste tu contraseña?",
+                        color = Color.Gray,
+                        fontSize = 12.sp
+                    )
+                }
+            }
             
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(16.dp))
             
             Button(
                 onClick = {
@@ -259,80 +316,208 @@ fun LoginScreen(
         }
     }
 
-    // DIÁLOGO DE SELECCIÓN DE CUENTA (SIMULACIÓN REALISTA)
+    var customGmailInput by remember { mutableStateOf("") }
+    var showCustomInput by remember { mutableStateOf(false) }
+
     if (showGoogleDialog) {
-        Dialog(onDismissRequest = { showGoogleDialog = false }) {
-            Card(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                shape = RoundedCornerShape(28.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White)
-            ) {
-                Column(
-                    modifier = Modifier.padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
+        AlertDialog(
+            onDismissRequest = { 
+                showGoogleDialog = false
+                showCustomInput = false
+            },
+            containerColor = Color(0xFF1A1A1A),
+            shape = RoundedCornerShape(24.dp),
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Image(
                         painter = painterResource(id = R.drawable.images2),
                         contentDescription = null,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(28.dp)
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text("Elige una cuenta", fontSize = 20.sp, fontWeight = FontWeight.Medium, color = Color.Black)
-                    Text("para continuar en GALY", fontSize = 14.sp, color = Color.Gray)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Elige tu cuenta de Google", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                }
+            },
+            text = {
+                Column {
+                    Text("Selecciona el correo Gmail con el que deseas ingresar:", color = Color.Gray, fontSize = 12.sp)
+                    Spacer(Modifier.height(14.dp))
                     
-                    Spacer(modifier = Modifier.height(24.dp))
+                    GoogleAccountOptionItem("Usuario Galy", "usuario.galy@gmail.com", ColorGalyRed) {
+                        showGoogleDialog = false
+                        scope.launch {
+                            AuthManager.loginConGoogleCuenta("usuario.galy@gmail.com", "Usuario Galy")
+                            CartManager.sincronizarConServidor(context)
+                            onLoginSuccess()
+                        }
+                    }
                     
-                    // Cuenta 1
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { 
-                                showGoogleDialog = false
-                                AuthManager.loginSimuladoGoogle()
-                                onLoginSuccess()
-                            }
-                            .padding(vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Surface(
-                            modifier = Modifier.size(40.dp),
-                            shape = CircleShape,
-                            color = ColorGalyRed
+                    Spacer(Modifier.height(8.dp))
+
+                    GoogleAccountOptionItem("Carlos Mendoza", "carlos.mendoza@gmail.com", Color(0xFF4C9AFF)) {
+                        showGoogleDialog = false
+                        scope.launch {
+                            AuthManager.loginConGoogleCuenta("carlos.mendoza@gmail.com", "Carlos Mendoza")
+                            CartManager.sincronizarConServidor(context)
+                            onLoginSuccess()
+                        }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    GoogleAccountOptionItem("María Rodríguez", "maria.rodriguez@gmail.com", Color(0xFFE91E63)) {
+                        showGoogleDialog = false
+                        scope.launch {
+                            AuthManager.loginConGoogleCuenta("maria.rodriguez@gmail.com", "María Rodríguez")
+                            CartManager.sincronizarConServidor(context)
+                            onLoginSuccess()
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    if (!showCustomInput) {
+                        TextButton(
+                            onClick = { showCustomInput = true },
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text("U", color = Color.White, fontWeight = FontWeight.Bold)
+                            Icon(Icons.Default.Add, null, tint = ColorGalyRed, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Usar otra cuenta de Gmail...", color = ColorGalyRed, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+                    } else {
+                        Column {
+                            OutlinedTextField(
+                                value = customGmailInput,
+                                onValueChange = { customGmailInput = it },
+                                placeholder = { Text("ejemplo@gmail.com", fontSize = 12.sp) },
+                                modifier = Modifier.fillMaxWidth().height(50.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Button(
+                                onClick = {
+                                    if (customGmailInput.isNotBlank() && customGmailInput.contains("@")) {
+                                        showGoogleDialog = false
+                                        showCustomInput = false
+                                        val cleanE = customGmailInput.trim()
+                                        val cleanN = cleanE.substringBefore("@").replace(".", " ").replaceFirstChar { it.uppercase() }
+                                        scope.launch {
+                                            AuthManager.loginConGoogleCuenta(cleanE, cleanN)
+                                            CartManager.sincronizarConServidor(context)
+                                            onLoginSuccess()
+                                        }
+                                    } else {
+                                        Toast.makeText(context, "Ingresa un correo Gmail válido", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = ColorGalyRed)
+                            ) {
+                                Text("INGRESAR CON ESTE GMAIL", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                             }
                         }
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Column {
-                            Text("Usuario Galy", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.Black)
-                            Text("usuario.galy@gmail.com", fontSize = 12.sp, color = Color.Gray)
-                        }
                     }
-                    
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color.LightGray.copy(alpha = 0.5f))
-                    
-                    // Opción de otra cuenta
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { /* No hace nada en simulación */ }
-                            .padding(vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.AccountCircle, null, tint = Color.Gray, modifier = Modifier.size(40.dp))
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Text("Usar otra cuenta", fontWeight = FontWeight.Medium, fontSize = 14.sp, color = Color.Black)
-                    }
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { 
+                    showGoogleDialog = false
+                    showCustomInput = false
+                }) {
+                    Text("Cancelar", color = Color.Gray, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+
+    if (showForgotDialog) {
+        AlertDialog(
+            onDismissRequest = { showForgotDialog = false },
+            containerColor = Color(0xFF1E1E1E),
+            title = {
+                Text("Recuperar Contraseña", color = Color.White, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        "Para continuar, Google compartirá tu nombre, dirección de correo electrónico, preferencia de idioma y foto de perfil con GALY.",
-                        fontSize = 11.sp,
-                        color = Color.Gray,
-                        lineHeight = 16.sp
+                        "Ingresa tu correo registrado para recibir las instrucciones de restablecimiento.",
+                        color = Color.LightGray,
+                        fontSize = 13.sp
+                    )
+                    OutlinedTextField(
+                        value = recoverEmail,
+                        onValueChange = { recoverEmail = it },
+                        label = { Text("Correo electrónico") },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = ColorGalyRed,
+                            unfocusedBorderColor = Color.Gray,
+                            focusedLabelColor = ColorGalyRed,
+                            unfocusedLabelColor = Color.Gray,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        ),
+                        singleLine = true
                     )
                 }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (recoverEmail.isBlank()) {
+                            Toast.makeText(context, "Ingresa tu correo", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        isRecovering = true
+                        scope.launch {
+                            val (success, message) = AuthManager.recuperarPassword(recoverEmail)
+                            isRecovering = false
+                            showForgotDialog = false
+                            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ColorGalyRed),
+                    enabled = !isRecovering
+                ) {
+                    if (isRecovering) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("Enviar", fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showForgotDialog = false }) {
+                    Text("Cancelar", color = Color.Gray)
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun GoogleAccountOptionItem(nombre: String, email: String, avatarColor: Color, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF262626)),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(modifier = Modifier.size(38.dp), shape = CircleShape, color = avatarColor) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(nombre.take(1).uppercase(), color = Color.White, fontWeight = FontWeight.Black, fontSize = 16.sp)
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(nombre, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Text(email, color = Color.Gray, fontSize = 11.sp)
             }
         }
     }

@@ -1,7 +1,7 @@
 package com.galyxnovatec.tienda.data.model
 
 import android.net.Uri
-import com.galyxnovatec.tienda.BuildConfig
+import com.galyxnovatec.tienda.data.network.RetrofitClient
 import com.google.gson.annotations.SerializedName
 
 data class User(
@@ -12,12 +12,13 @@ data class User(
     @SerializedName("direccion") val direccion: String? = null,
     @SerializedName("imagen_url") val imagenUrl: String? = null,
     @SerializedName("es_admin") val esAdmin: Boolean = false,
-    @SerializedName("puntos") val puntos: Int = 0
+    @SerializedName("puntos") val puntos: Int = 0,
+    @SerializedName("referral_code") val referralCode: String? = "GALY-${id + 1000}"
 ) {
     fun getFullImageUrl(): String? {
         if (imagenUrl.isNullOrEmpty()) return null
         if (imagenUrl.startsWith("http")) return imagenUrl
-        return "${BuildConfig.BASE_URL}img/${Uri.encode(imagenUrl)}"
+        return "${RetrofitClient.getEffectiveBaseUrl()}img/${Uri.encode(imagenUrl)}"
     }
 
     fun getNivelNombre(): String = when {
@@ -36,5 +37,8 @@ data class User(
 data class AuthResponse(
     @SerializedName("success") val success: Boolean,
     @SerializedName("message") val message: String,
-    @SerializedName("user") val user: User? = null
+    @SerializedName("user") val user: User? = null,
+    @SerializedName("access_token") val accessToken: String? = null,
+    @SerializedName("admin_token") val adminToken: String? = null,
+    @SerializedName("admin_dashboard_url") val adminDashboardUrl: String? = null
 )

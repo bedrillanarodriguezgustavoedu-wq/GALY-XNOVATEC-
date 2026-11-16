@@ -1,5 +1,6 @@
 package com.galyxnovatec.tienda.ui.screens
 
+import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
@@ -226,7 +227,7 @@ fun CartScreen(
                                 OutlinedTextField(
                                     value = codigoCupon,
                                     onValueChange = { codigoCupon = it.uppercase() },
-                                    placeholder = { Text("GALY2026", fontSize = 13.sp) },
+                                    placeholder = { Text("Ingresa tu código", fontSize = 13.sp) },
                                     modifier = Modifier.weight(1f).height(50.dp),
                                     shape = RoundedCornerShape(12.dp),
                                     singleLine = true,
@@ -238,11 +239,21 @@ fun CartScreen(
                                 )
                                 Spacer(Modifier.width(12.dp))
                                 Button(
-                                    onClick = { if(CartManager.aplicarCupon(codigoCupon)) codigoCupon = "" },
+                                    onClick = {
+                                        CartManager.aplicarCupon(codigoCupon) { exito, mensaje ->
+                                            Toast.makeText(
+                                                context,
+                                                if (exito) "✅ $mensaje" else "❌ $mensaje",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                            if (exito) codigoCupon = ""
+                                        }
+                                    },
+                                    enabled = !CartManager.validandoCupon,
                                     shape = RoundedCornerShape(12.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black)
                                 ) {
-                                    Text("APLICAR", fontWeight = FontWeight.Bold)
+                                    Text(if (CartManager.validandoCupon) "…" else "APLICAR", fontWeight = FontWeight.Bold)
                                 }
                             }
                         }

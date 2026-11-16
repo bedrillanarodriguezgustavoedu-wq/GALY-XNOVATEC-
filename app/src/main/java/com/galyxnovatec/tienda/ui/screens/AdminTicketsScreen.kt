@@ -37,15 +37,18 @@ fun AdminTicketsScreen(alVolver: () -> Unit) {
     val scope = rememberCoroutineScope()
     var tickets by remember { mutableStateOf<List<ServicioTecnico>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
-    
+    var loadError by remember { mutableStateOf<String?>(null) }
     var selectedTicket by remember { mutableStateOf<ServicioTecnico?>(null) }
 
     fun cargarTickets() {
         scope.launch {
             isLoading = true
+            loadError = null
             try {
                 tickets = RetrofitClient.instance.getAllTickets()
-            } catch (e: Exception) { }
+            } catch (e: Exception) {
+                loadError = e.message ?: "No se pudieron cargar los tickets."
+            }
             isLoading = false
         }
     }
@@ -68,6 +71,20 @@ fun AdminTicketsScreen(alVolver: () -> Unit) {
         Box(Modifier.fillMaxSize().padding(padding).background(Color.Black)) {
             if (isLoading) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = ColorGalyRed)
+            } else if (loadError != null) {
+                Column(
+                    modifier = Modifier.align(Alignment.Center).padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(loadError.orEmpty(), color = Color.White)
+                    TextButton(onClick = { cargarTickets() }) { Text("Reintentar") }
+                }
+            } else if (tickets.isEmpty()) {
+                Text(
+                    "Todavía no hay solicitudes de soporte.",
+                    color = Color.LightGray,
+                    modifier = Modifier.align(Alignment.Center)
+                )
             } else {
                 LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(tickets) { ticket ->
@@ -81,7 +98,9 @@ fun AdminTicketsScreen(alVolver: () -> Unit) {
     if (selectedTicket != null) {
         var nuevoEstado by remember { mutableStateOf(selectedTicket!!.estado ?: "Recibido") }
         var nuevoCosto by remember { mutableStateOf(selectedTicket!!.costoEstimado?.toString() ?: "0") }
-        
+        var isSaving by remember { mutableStateOf(false) }
+        val parsedCost = nuevoCosto.toDoubleOrNull()
+
         AlertDialog(
             onDismissRequest = { selectedTicket = null },
             containerColor = Color(0xFF111111),
@@ -110,6 +129,7 @@ fun AdminTicketsScreen(alVolver: () -> Unit) {
                         label = { Text("Costo Estimado (S/) ") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth(),
+                        isError = parsedCost == null || parsedCost < 0,
                         colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
                     )
                 }
@@ -117,17 +137,31 @@ fun AdminTicketsScreen(alVolver: () -> Unit) {
             confirmButton = {
                 Button(onClick = {
                     scope.launch {
-                        val res = RetrofitClient.instance.updateTicketStatus(
-                            mapOf("id" to selectedTicket!!.id, "estado" to nuevoEstado, "costo" to (nuevoCosto.toDoubleOrNull() ?: 0.0))
-                        )
-                        if (res["success"] == true) {
-                            selectedTicket = null
-                            cargarTickets()
-                            Toast.makeText(context, "Actualizado con éxito", Toast.LENGTH_SHORT).show()
+                        isSaving = true
+                        try {
+                            val res = RetrofitClient.instance.updateTicketStatus(
+                                mapOf("id" to selectedTicket!!.id, "estado" to nuevoEstado, "costo" to parsedCost!!)
+                            )
+                            if (res["success"] == true) {
+                                selectedTicket = null
+                                cargarTickets()
+                                Toast.makeText(context, "Actualizado con éxito", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    res["message"]?.toString() ?: "No se pudo actualizar el ticket.",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        } catch (e: Exception) {
+                            Toast.makeText(context, e.message ?: "No se pudo actualizar el ticket.", Toast.LENGTH_LONG).show()
+                        } finally {
+                            isSaving = false
                         }
                     }
-                }, colors = ButtonDefaults.buttonColors(containerColor = ColorGalyRed)) {
-                    Text("GUARDAR")
+                }, enabled = parsedCost != null && parsedCost >= 0 && !isSaving, colors = ButtonDefaults.buttonColors(containerColor = ColorGalyRed)) {
+                    if (isSaving) CircularProgressIndicator(Modifier.size(18.dp), color = Color.White)
+                    else Text("GUARDAR")
                 }
             }
         )

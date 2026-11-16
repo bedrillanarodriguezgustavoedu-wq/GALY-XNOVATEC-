@@ -124,11 +124,16 @@ fun GalyAiChatScreen(alVolver: () -> Unit, alSeleccionarProducto: (Int) -> Unit)
                                 
                                 scope.launch {
                                     try {
-                                        val response = RetrofitClient.aiInstance.getAiResponse(userMsg)
-                                        val pid = (response["product_id"] as? Double)?.toInt()
-                                        messages = messages + ChatMessage((response["reply"] as? String) ?: "Lo siento, no entendí.", false, pid)
+                                        val response = try {
+                                            RetrofitClient.aiInstance.getAiResponse(userMsg)
+                                        } catch (e: Exception) {
+                                            RetrofitClient.instance.getAiResponsePhp(userMsg)
+                                        }
+                                        val pid = (response["product_id"] as? Number)?.toInt()
+                                        val reply = (response["reply"] as? String) ?: "Lo siento, no entendí tu consulta."
+                                        messages = messages + ChatMessage(reply, false, pid)
                                     } catch (e: Exception) {
-                                        messages = messages + ChatMessage("Error: No pude conectarme con mi servidor Python.", false)
+                                        messages = messages + ChatMessage("Lo siento, no pude procesar la consulta en este momento.", false)
                                     } finally {
                                         isTyping = false
                                     }

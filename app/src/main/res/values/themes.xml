@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Tema Principal -->
-    <style name="Theme.GALY" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:windowBackground">@color/white</item>
-        <item name="android:statusBarColor">@color/white</item>
-        <item name="android:navigationBarColor">@color/white</item>
+    <!-- Tema Principal (Galy Dark) -->
+    <style name="Theme.GALY" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#000000</item>
+        <item name="android:statusBarColor">#000000</item>
+        <item name="android:navigationBarColor">#000000</item>
     </style>
 
     <!-- Tema para la Splash Screen (Android 12+) -->
     <style name="Theme.App.Starting" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#FFFFFF</item> <!-- Fondo blanco limpio -->
-        <item name="windowSplashScreenAnimatedIcon">@drawable/icono</item>
-        <item name="windowSplashScreenIconBackgroundColor">#FFFFFF</item>
+        <item name="windowSplashScreenBackground">#000000</item> <!-- Fondo negro oscuro alineado con GALY -->
+        <item name="windowSplashScreenAnimatedIcon">@drawable/icono_galy_personalizado</item>
+        <item name="windowSplashScreenIconBackgroundColor">#000000</item>
         <item name="postSplashScreenTheme">@style/Theme.GALY</item>
     </style>
 </resources>

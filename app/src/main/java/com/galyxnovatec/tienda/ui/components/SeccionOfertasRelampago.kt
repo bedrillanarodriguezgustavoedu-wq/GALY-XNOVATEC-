@@ -52,6 +52,12 @@ fun SeccionOfertasRelampago(
         ), label = "scale"
     )
 
+    val ofertasValidas = remember(productos) {
+        productos.filter { it.id > 0 && it.enOferta && it.precioOferta > 0 && it.precioOferta < it.precioNormal }
+    }
+
+    if (ofertasValidas.isEmpty()) return
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -76,7 +82,7 @@ fun SeccionOfertasRelampago(
                     text = "OFERTAS RELÁMPAGO",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Black,
-                    color = Color.Black,
+                    color = Color.White,
                     letterSpacing = 1.sp
                 )
             }
@@ -84,9 +90,9 @@ fun SeccionOfertasRelampago(
             // Contador Estilo Digital
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TimerBlock(time = "%02d".format(hours))
-                Text(":", fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 2.dp))
+                Text(":", fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(horizontal = 2.dp))
                 TimerBlock(time = "%02d".format(minutes))
-                Text(":", fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 2.dp))
+                Text(":", fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(horizontal = 2.dp))
                 TimerBlock(time = "%02d".format(seconds))
             }
         }
@@ -97,7 +103,7 @@ fun SeccionOfertasRelampago(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(productos) { producto ->
+            items(ofertasValidas, key = { it.id }) { producto ->
                 Box(modifier = Modifier.width(160.dp)) {
                     TarjetaProducto(
                         producto = producto,

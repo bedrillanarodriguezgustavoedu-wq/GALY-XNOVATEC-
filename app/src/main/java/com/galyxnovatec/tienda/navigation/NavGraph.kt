@@ -75,8 +75,10 @@ fun GalyNavGraph(navController: NavHostController) {
                 },
             ),
         ) { backStackEntry ->
+            val rawCategory = backStackEntry.arguments?.getString("category")
+            val cleanCategory = if (rawCategory.isNullOrBlank() || rawCategory == "{category}" || rawCategory.startsWith("{")) null else rawCategory
             HomeScreen(
-                categoriaInicial = backStackEntry.arguments?.getString("category"),
+                categoriaInicial = cleanCategory,
                 alSeleccionarProducto = { producto ->
                     navController.navigate(Screen.Detail.createRoute(producto.id))
                 },
@@ -91,6 +93,9 @@ fun GalyNavGraph(navController: NavHostController) {
                 },
                 alIrAPerfil = {
                     navController.navigate(Screen.Profile.route)
+                },
+                alIrAPanelAdmin = {
+                    navController.navigate(Screen.AdminPanel.route)
                 },
                 alIrAServicioTecnico = {
                     navController.navigate(Screen.TechnicalService.route)
@@ -118,9 +123,26 @@ fun GalyNavGraph(navController: NavHostController) {
                     alComprarAhora = { p, cant ->
                         CartManager.agregarProducto(context, p, cant)
                         if (AuthManager.currentUser == null) {
+                            Toast.makeText(context, "Inicia sesión antes de finalizar tu compra.", Toast.LENGTH_LONG).show()
                             navController.navigate(Screen.Login.route)
                         } else {
                             navController.navigate(Screen.Checkout.route)
+                        }
+                    },
+                    alReservar = { p, cant ->
+                        val userId = AuthManager.currentUser?.id
+                        if (userId == null) {
+                            Toast.makeText(context, "Inicia sesión para apartar un producto.", Toast.LENGTH_LONG).show()
+                            navController.navigate(Screen.Login.route)
+                        } else {
+                            CoroutineScope(Dispatchers.Main).launch {
+                                val error = ProductRepository.crearReserva(userId, p.id, cant)
+                                Toast.makeText(
+                                    context,
+                                    error ?: "Producto apartado por 24 horas.",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
                         }
                     },
                     alSeleccionarProductoRelacionado = { rel ->
@@ -131,11 +153,12 @@ fun GalyNavGraph(navController: NavHostController) {
         }
         
         composable(Screen.Cart.route) {
+            val context = LocalContext.current
             CartScreen(
                 alVolver = { navController.popBackStack() },
                 alIrACheckout = {
                     if (AuthManager.currentUser == null) {
-                        // Si no está logueado, ir a login pero recordar que venía del carrito
+                        Toast.makeText(context, "Inicia sesión antes de finalizar tu compra.", Toast.LENGTH_LONG).show()
                         navController.navigate(Screen.Login.route)
                     } else {
                         navController.navigate(Screen.Checkout.route)
@@ -167,7 +190,6 @@ fun GalyNavGraph(navController: NavHostController) {
         }
         
         composable(Screen.Profile.route) {
-            val context = LocalContext.current
             ProfileScreen(
                 alIrAMisDatos = {
                     navController.navigate(Screen.UserData.route)
@@ -185,16 +207,18 @@ fun GalyNavGraph(navController: NavHostController) {
                     navController.navigate(Screen.Addresses.route)
                 },
                 alIrAMetodosPago = {
-                    Toast.makeText(context, "Métodos de Pago: Próximamente", Toast.LENGTH_SHORT).show()
+                    navController.navigate(Screen.PaymentMethods.route)
                 },
-                alIrACupones = {
-                    Toast.makeText(context, "Cupones: Próximamente", Toast.LENGTH_SHORT).show()
-                },
-                alIrANotificaciones = {
-                    Toast.makeText(context, "Notificaciones: Próximamente", Toast.LENGTH_SHORT).show()
-                },
+                alIrACupones = { navController.navigate(Screen.Cupones.route) },
+                alIrANotificaciones = { navController.navigate(Screen.Notificaciones.route) },
                 alIrAServicioTecnico = {
                     navController.navigate(Screen.TechnicalService.route)
+                },
+                alIrANosotros = {
+                    navController.navigate(Screen.About.route)
+                },
+                alIrAReservas = {
+                    navController.navigate(Screen.Reservations.route)
                 },
                 alIrAPanelAdmin = {
                     navController.navigate(Screen.AdminPanel.route)
@@ -254,9 +278,13 @@ fun GalyNavGraph(navController: NavHostController) {
                 alIrAPedidos = { navController.navigate(Screen.AdminOrders.route) },
                 alIrABanners = { navController.navigate(Screen.AdminBanners.route) },
                 alIrAUsuarios = { navController.navigate(Screen.AdminUsers.route) },
+                alIrAOfertas = { navController.navigate(Screen.AdminOffers.route) },
                 alIrACupones = { navController.navigate(Screen.AdminCoupons.route) },
                 alIrANotificaciones = { navController.navigate(Screen.AdminNotifications.route) },
                 alIrAGestionarCategorias = { navController.navigate(Screen.AdminCategories.route) },
+                alIrAGestionarMarcas = { navController.navigate(Screen.AdminBrands.route) },
+                alIrAContacto = { navController.navigate(Screen.AdminContact.route) },
+                alIrANosotros = { navController.navigate(Screen.AdminNosotros.route) },
                 alIrAGestionarProductos = { navController.navigate(Screen.AdminProducts.route) },
                 alIrAGestionarTickets = { navController.navigate(Screen.AdminTickets.route) }
             )
@@ -264,6 +292,10 @@ fun GalyNavGraph(navController: NavHostController) {
 
         composable(Screen.AdminCoupons.route) {
             AdminCouponsScreen(alVolver = { navController.popBackStack() })
+        }
+
+        composable(Screen.AdminOffers.route) {
+            AdminOffersScreen(alVolver = { navController.popBackStack() })
         }
 
         composable(Screen.AdminNotifications.route) {
@@ -298,6 +330,26 @@ fun GalyNavGraph(navController: NavHostController) {
             AdminCategoriesScreen(alVolver = { navController.popBackStack() })
         }
 
+        composable(Screen.AdminBrands.route) {
+            AdminBrandsScreen(alVolver = { navController.popBackStack() })
+        }
+
+        composable(Screen.AdminContact.route) {
+            AdminContactScreen(alVolver = { navController.popBackStack() })
+        }
+
+        composable(Screen.AdminNosotros.route) {
+            AdminNosotrosScreen(alVolver = { navController.popBackStack() })
+        }
+
+        composable(Screen.About.route) {
+            AboutScreen(alVolver = { navController.popBackStack() })
+        }
+
+        composable(Screen.Reservations.route) {
+            ReservationsScreen(alVolver = { navController.popBackStack() })
+        }
+
         composable(Screen.AiChat.route) {
             GalyAiChatScreen(
                 alVolver = { navController.popBackStack() },
@@ -323,6 +375,10 @@ fun GalyNavGraph(navController: NavHostController) {
 
         composable(Screen.UserData.route) {
             UserDataScreen(alVolver = { navController.popBackStack() })
+        }
+
+        composable(Screen.PaymentMethods.route) {
+            PaymentMethodsScreen(onBack = { navController.popBackStack() })
         }
 
         composable(Screen.AdminOrders.route) {
@@ -360,6 +416,17 @@ fun GalyNavGraph(navController: NavHostController) {
             )
         }
         
+        composable(Screen.Cupones.route) {
+            CuponesScreen(
+                alVolver = { navController.popBackStack() },
+                alIrAlCarrito = { navController.navigate(Screen.Cart.route) }
+            )
+        }
+
+        composable(Screen.Notificaciones.route) {
+            NotificacionesScreen(alVolver = { navController.popBackStack() })
+        }
+
         composable(Screen.Success.route) {
             SuccessScreen(
                 alTerminar = {

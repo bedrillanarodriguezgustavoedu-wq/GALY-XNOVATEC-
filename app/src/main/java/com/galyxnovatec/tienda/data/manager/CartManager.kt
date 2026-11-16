@@ -16,13 +16,25 @@ import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.math.round
 
 object CartManager {
     val items = mutableStateListOf<CartItem>()
     var cuponAplicado by mutableStateOf<String?>(null)
     var descuentoPorCupon by mutableDoubleStateOf(0.0)
+    var validandoCupon by mutableStateOf(false)
     var direccionSeleccionada by mutableStateOf<Direccion?>(null)
-    
+
+    private var porcentajeCupon = 0
+
+    private data class ValidacionCupon(
+        val exito: Boolean,
+        val mensaje: String,
+        val codigo: String = "",
+        val porcentaje: Int = 0
+    )
+
     private val scope = CoroutineScope(Dispatchers.IO)
     private val gson = Gson()
 
@@ -36,7 +48,9 @@ object CartManager {
                 val savedItems: List<CartItem> = gson.fromJson(cartJson, type)
                 items.clear()
                 items.addAll(savedItems)
-            } catch (e: Exception) {}
+            } catch (e: Exception) {
+                Log.e("GALY", "No se pudo cargar el carrito guardado", e)
+            }
         }
     }
 
@@ -82,20 +96,56 @@ object CartManager {
         }
     }
 
-    fun aplicarCupon(codigo: String): Boolean {
-        val validCodes = listOf("GALY2024", "GALY2025", "GALY2026", "XNOVATEC")
-        return if (validCodes.contains(codigo.uppercase())) {
-            cuponAplicado = codigo.uppercase()
-            recalcularDescuento()
-            true
-        } else {
-            false
+    fun aplicarCupon(codigo: String, alTerminar: (Boolean, String) -> Unit) {
+        val codigoLimpio = codigo.trim().uppercase()
+        if (codigoLimpio.isEmpty()) {
+            alTerminar(false, "Escribe el código del cupón.")
+            return
+        }
+        if (validandoCupon) return
+
+        validandoCupon = true
+        val subtotal = obtenerSubtotal()
+        scope.launch {
+            val resultado = try {
+                val respuesta = RetrofitClient.instance.validarCupon(
+                    mapOf("codigo" to codigoLimpio, "subtotal" to subtotal)
+                )
+                val porcentaje = (respuesta["descuento_porcentaje"] as? Number)?.toInt() ?: 0
+                val mensaje = respuesta["message"]?.toString()
+                if (respuesta["success"] == true && porcentaje > 0) {
+                    ValidacionCupon(
+                        exito = true,
+                        mensaje = mensaje ?: "Cupón aplicado: $porcentaje% de descuento.",
+                        codigo = respuesta["codigo"]?.toString() ?: codigoLimpio,
+                        porcentaje = porcentaje
+                    )
+                } else {
+                    ValidacionCupon(false, mensaje ?: "Ese cupón ya no está disponible.")
+                }
+            } catch (error: Exception) {
+                Log.e("GALY", "No se pudo validar el cupón $codigoLimpio", error)
+                ValidacionCupon(false, "No se pudo validar el cupón. Revisa tu conexión e inténtalo otra vez.")
+            }
+
+            withContext(Dispatchers.Main) {
+                validandoCupon = false
+                if (resultado.exito) {
+                    cuponAplicado = resultado.codigo
+                    porcentajeCupon = resultado.porcentaje
+                    recalcularDescuento()
+                } else {
+                    quitarCupon()
+                }
+                alTerminar(resultado.exito, resultado.mensaje)
+            }
         }
     }
 
     fun quitarCupon() {
         cuponAplicado = null
         descuentoPorCupon = 0.0
+        porcentajeCupon = 0
     }
 
     fun agregarProducto(context: Context, producto: Producto, cantidad: Int = 1) {
@@ -154,8 +204,15 @@ object CartManager {
         val userId = AuthManager.currentUser?.id ?: return
         scope.launch {
             try {
-                RetrofitClient.instance.addToCart(mapOf("usuario_id" to userId, "producto_id" to productoId, "cantidad" to cantidad))
-            } catch (e: Exception) {}
+                requireSuccessfulCartResponse(
+                    RetrofitClient.instance.addToCart(
+                        mapOf("usuario_id" to userId, "producto_id" to productoId, "cantidad" to cantidad)
+                    ),
+                    "agregar el producto"
+                )
+            } catch (e: Exception) {
+                Log.e("GALY", "No se pudo sincronizar el producto agregado al carrito", e)
+            }
         }
     }
 
@@ -163,8 +220,15 @@ object CartManager {
         val userId = AuthManager.currentUser?.id ?: return
         scope.launch {
             try {
-                RetrofitClient.instance.updateCartQuantity(mapOf("usuario_id" to userId, "producto_id" to productoId, "cantidad" to cantidad))
-            } catch (e: Exception) {}
+                requireSuccessfulCartResponse(
+                    RetrofitClient.instance.updateCartQuantity(
+                        mapOf("usuario_id" to userId, "producto_id" to productoId, "cantidad" to cantidad)
+                    ),
+                    "actualizar la cantidad"
+                )
+            } catch (e: Exception) {
+                Log.e("GALY", "No se pudo sincronizar la cantidad del carrito", e)
+            }
         }
     }
 
@@ -172,16 +236,29 @@ object CartManager {
         val userId = AuthManager.currentUser?.id ?: return
         scope.launch {
             try {
-                RetrofitClient.instance.deleteFromCart(mapOf("usuario_id" to userId, "producto_id" to productoId))
-            } catch (e: Exception) {}
+                requireSuccessfulCartResponse(
+                    RetrofitClient.instance.deleteFromCart(mapOf("usuario_id" to userId, "producto_id" to productoId)),
+                    "eliminar el producto"
+                )
+            } catch (e: Exception) {
+                Log.e("GALY", "No se pudo eliminar el producto del carrito remoto", e)
+            }
+        }
+    }
+
+    private fun requireSuccessfulCartResponse(response: Map<String, Any>, operation: String) {
+        if (response["success"] != true) {
+            throw IllegalStateException(response["message"]?.toString() ?: "No se pudo $operation.")
         }
     }
 
     private fun recalcularDescuento() {
-        if (cuponAplicado != null) {
-            descuentoPorCupon = obtenerSubtotal() * 0.10
+        val codigo = cuponAplicado
+        descuentoPorCupon = if (codigo != null && porcentajeCupon > 0) {
+            val bruto = obtenerSubtotal() * porcentajeCupon / 100.0
+            round(bruto * 100) / 100
         } else {
-            descuentoPorCupon = 0.0
+            0.0
         }
     }
 
@@ -193,24 +270,38 @@ object CartManager {
         if (userId != null) {
             scope.launch {
                 try {
-                    RetrofitClient.instance.clearCart(mapOf("usuario_id" to userId))
-                } catch (e: Exception) {}
+                    requireSuccessfulCartResponse(
+                        RetrofitClient.instance.clearCart(mapOf("usuario_id" to userId)),
+                        "vaciar el carrito"
+                    )
+                } catch (e: Exception) {
+                    Log.e("GALY", "No se pudo vaciar el carrito remoto", e)
+                }
             }
         }
     }
 
     fun eliminarItemsSeleccionados(context: Context) {
-        val userId = AuthManager.currentUser?.id ?: return
+        val userId = AuthManager.currentUser?.id
         val itemsAElminar = items.filter { it.isSelected }
         items.removeAll { it.isSelected }
         guardarLocalmente(context)
         recalcularDescuento()
-        
+
+        if (userId == null) return
+
         scope.launch {
             itemsAElminar.forEach { 
                 try {
-                    RetrofitClient.instance.deleteFromCart(mapOf("usuario_id" to userId, "producto_id" to it.producto.id))
-                } catch (e: Exception) {}
+                    requireSuccessfulCartResponse(
+                        RetrofitClient.instance.deleteFromCart(
+                            mapOf("usuario_id" to userId, "producto_id" to it.producto.id)
+                        ),
+                        "eliminar el producto"
+                    )
+                } catch (e: Exception) {
+                    Log.e("GALY", "No se pudo eliminar un producto seleccionado del carrito remoto", e)
+                }
             }
         }
     }

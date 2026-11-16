@@ -21,16 +21,35 @@ import kotlinx.coroutines.launch
 class MyFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
-        remoteMessage.notification?.let {
-            sendNotification(it.title ?: "GALY STORE", it.body ?: "")
-        }
+        val title = remoteMessage.notification?.title ?: remoteMessage.data["title"] ?: "GALY STORE"
+        val body = remoteMessage.notification?.body ?: remoteMessage.data["body"] ?: ""
+        val targetScreen = remoteMessage.data["target_screen"] ?: remoteMessage.data["screen"]
+        val orderId = remoteMessage.data["order_id"]
+        val productId = remoteMessage.data["product_id"]
+
+        sendNotification(title, body, targetScreen, orderId, productId)
     }
 
-    private fun sendNotification(title: String, messageBody: String) {
-        val intent = Intent(this, MainActivity::class.java)
-        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-        val pendingIntent = PendingIntent.getActivity(this, 0, intent,
-            PendingIntent.FLAG_IMMUTABLE)
+    private fun sendNotification(
+        title: String,
+        messageBody: String,
+        targetScreen: String? = null,
+        orderId: String? = null,
+        productId: String? = null
+    ) {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            targetScreen?.let { putExtra("EXTRA_TARGET_SCREEN", it) }
+            orderId?.let { putExtra("EXTRA_ORDER_ID", it) }
+            productId?.let { putExtra("EXTRA_PRODUCT_ID", it) }
+        }
+
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            System.currentTimeMillis().toInt(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
 
         val channelId = "galy_notifications"
         val notificationBuilder = NotificationCompat.Builder(this, channelId)
