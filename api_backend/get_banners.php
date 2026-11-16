@@ -1,24 +1,30 @@
 <?php
 error_reporting(0);
 ini_set('display_errors', 0);
-include 'db_config.php';
+require_once __DIR__ . '/db_config.php';
 
-// Verificamos si la columna 'subtitulo' existe o si debemos usar 'link'
-// Según tu tabla es 'subtitulo'
-$sql = "SELECT id, imagen_url, titulo, subtitulo, color_fondo FROM banners_inicio ORDER BY orden ASC";
+$sql = "SELECT id, imagen AS imagen_url, titulo, subtitulo, enlace AS link,
+               COALESCE(color_fondo, '#FF0055') AS color_fondo
+        FROM banners
+        WHERE activo = 1
+          AND (fecha_publicacion IS NULL OR fecha_publicacion <= NOW())
+        ORDER BY orden ASC, id ASC";
 $result = $conn->query($sql);
 
+if (!$result) {
+    http_response_code(500);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['success' => false, 'message' => 'No se pudieron consultar los banners.']);
+    $conn->close();
+    exit;
+}
+
 $banners = [];
-if ($result) {
-    while($row = $result->fetch_assoc()) {
-        $row['id'] = (int)$row['id'];
-        // Si la App aún espera 'link', lo duplicamos para evitar errores
-        $row['link'] = $row['subtitulo'];
-        $banners[] = $row;
-    }
+while ($row = $result->fetch_assoc()) {
+    $row['id'] = (int) $row['id'];
+    $banners[] = $row;
 }
 
 header('Content-Type: application/json; charset=utf-8');
-echo json_encode($banners, JSON_UNESCAPED_UNICODE);
+echo json_encode($banners, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 $conn->close();
-?>

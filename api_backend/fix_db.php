@@ -199,13 +199,7 @@ $report['cupones'] = "Cupones actualizados";
 // --- FIX CATEGORIAS ENCODING ---
 $conn->query("UPDATE categorias SET nombre = 'Audífonos' WHERE nombre LIKE 'Aud%'");
 $report['categorias_fix'] = "Nombres de categorías corregidos";
-$admin_email = "admin@galyxnovatec.com";
-$admin_pass = password_hash("GALY_PRO_2025", PASSWORD_DEFAULT);
-$res = $conn->query("SELECT id FROM usuarios WHERE email = '$admin_email'");
-if ($res->num_rows == 0) {
-    $conn->query("INSERT INTO usuarios (nombre, email, password, es_admin) VALUES ('Admin Galy', '$admin_email', '$admin_pass', 1)");
-    $report['admin'] = "Admin creado por defecto";
-}
+
 
 echo json_encode([
     "success" => true,

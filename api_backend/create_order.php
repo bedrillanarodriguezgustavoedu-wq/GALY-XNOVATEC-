@@ -14,9 +14,14 @@ if (!$data) {
 $usuario_id = isset($data['usuario_id']) ? (int)$data['usuario_id'] : 0;
 $total = isset($data['total']) ? (float)$data['total'] : 0.0;
 $items = isset($data['items']) ? $data['items'] : [];
-$metodo_pago = isset($data['metodo_pago']) ? $data['metodo_pago'] : 'YAPE';
+$metodo_pago = isset($data['metodo_pago'])
+    ? strtolower(trim((string) $data['metodo_pago']))
+    : 'yape';
+$metodo_pago_sql = $conn->real_escape_string($metodo_pago);
+$es_pago_manual = in_array($metodo_pago, ['yape', 'plin', 'bcp'], true);
 
 // Nuevos campos para la boleta y entrega
+$cliente_nombre = isset($data['cliente_nombre']) ? $conn->real_escape_string($data['cliente_nombre']) : '';
 $cliente_telefono = isset($data['cliente_telefono']) ? $conn->real_escape_string($data['cliente_telefono']) : '';
 $cliente_email = isset($data['cliente_email']) ? $conn->real_escape_string($data['cliente_email']) : '';
 $cliente_dni = isset($data['cliente_dni']) ? $conn->real_escape_string($data['cliente_dni']) : '';
@@ -35,13 +40,18 @@ if ($usuario_id <= 0 || empty($items)) {
 // 1. Crear el pedido principal con todos los datos
 $sqlPedido = "INSERT INTO pedidos (
     usuario_id, total, estado, metodo_pago,
-    cliente_telefono, cliente_email, cliente_dni, metodo_entrega,
+    cliente_nombre, cliente_telefono, cliente_email, cliente_dni, metodo_entrega,
     direccion, ciudad, distrito, referencia, maps_url
 ) VALUES (
-    $usuario_id, $total, 'PENDIENTE', '$metodo_pago',
-    '$cliente_telefono', '$cliente_email', '$cliente_dni', '$metodo_entrega',
+    $usuario_id, $total, 'PENDIENTE', '$metodo_pago_sql',
+    '$cliente_nombre', '$cliente_telefono', '$cliente_email', '$cliente_dni', '$metodo_entrega',
     '$direccion', '$ciudad', '$distrito', '$referencia', '$maps_url'
 )";
+
+if (!$conn->begin_transaction()) {
+    echo json_encode(["success" => false, "message" => "No se pudo iniciar el registro del pedido."]);
+    exit;
+}
 
 if ($conn->query($sqlPedido)) {
     $pedido_id = $conn->insert_id;
@@ -63,12 +73,43 @@ if ($conn->query($sqlPedido)) {
         }
     }
 
-    if ($todo_ok) {
-        echo json_encode(["success" => true, "message" => "¡Pedido GALY realizado!", "pedido_id" => $pedido_id]);
+    if ($todo_ok && $es_pago_manual) {
+        $paymentStatement = $conn->prepare(
+            "INSERT INTO pedido_pagos_manuales
+                (pedido_id, usuario_id, metodo_pago, estado, created_at, updated_at)
+             VALUES (?, ?, ?, 'pendiente', NOW(), NOW())"
+        );
+        if (!$paymentStatement) {
+            error_log("GALY manual payment registration prepare failed: " . $conn->error);
+            $todo_ok = false;
+        } else {
+            $paymentStatement->bind_param("iis", $pedido_id, $usuario_id, $metodo_pago);
+            if (!$paymentStatement->execute()) {
+                error_log("GALY manual payment registration failed: " . $paymentStatement->error);
+                $todo_ok = false;
+            }
+            $paymentStatement->close();
+        }
+    }
+
+    if ($todo_ok && $conn->commit()) {
+        echo json_encode([
+            "success" => true,
+            "message" => "¡Pedido GALY realizado!",
+            "pedido_id" => $pedido_id,
+            "manual_payment_registered" => $es_pago_manual,
+        ]);
     } else {
-        echo json_encode(["success" => false, "message" => "Error al insertar productos: " . $conn->error]);
+        $conn->rollback();
+        echo json_encode([
+            "success" => false,
+            "message" => $es_pago_manual
+                ? "No se pudo registrar el pedido y su pago. Inténtalo nuevamente o contacta a la tienda."
+                : "No se pudo completar el pedido. Inténtalo nuevamente.",
+        ]);
     }
 } else {
+    $conn->rollback();
     echo json_encode(["success" => false, "message" => "Error al crear pedido principal: " . $conn->error]);
 }
 

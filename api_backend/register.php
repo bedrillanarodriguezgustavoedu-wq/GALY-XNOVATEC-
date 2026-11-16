@@ -22,6 +22,8 @@ if (isset($data['nombre']) && isset($data['email']) && isset($data['password']))
             echo json_encode([
                 "success" => true,
                 "message" => "Usuario registrado correctamente",
+                "access_token" => "galy_access_token_" . $id,
+                "admin_token" => null,
                 "user" => [
                     "id" => $id,
                     "nombre" => $nombre,

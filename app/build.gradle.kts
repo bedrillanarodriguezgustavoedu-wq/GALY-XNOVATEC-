@@ -9,6 +9,7 @@ plugins {
 android {
     namespace = "com.galyxnovatec.tienda"
     compileSdk = 35
+    buildToolsVersion = "37.0.0"
 
     defaultConfig {
         applicationId = "com.galyxnovatec.tienda"
@@ -30,10 +31,11 @@ android {
             properties.load(propertiesFile.inputStream())
         }
 
-        buildConfigField("String", "ADMIN_EMAIL", properties.getProperty("ADMIN_EMAIL", "\"admin@galyxnovatec.com\""))
-        buildConfigField("String", "ADMIN_PASSWORD", properties.getProperty("ADMIN_PASSWORD", "\"GALY_PRO_2025\""))
-        buildConfigField("String", "MP_PUBLIC_KEY", properties.getProperty("MP_PUBLIC_KEY", "\"TEST-ad6631b0-955a-40a2-894b-439f04128521\""))
+        buildConfigField("String", "MP_PUBLIC_KEY", properties.getProperty("MP_PUBLIC_KEY", "\"\""))
         buildConfigField("String", "BASE_URL", properties.getProperty("BASE_URL", "\"http://10.0.2.2/galy_api/\""))
+        buildConfigField("String", "WEB_BASE_URL", properties.getProperty("WEB_BASE_URL", "\"http://10.0.2.2:8000/\""))
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", properties.getProperty("GOOGLE_WEB_CLIENT_ID", "\"\""))
+        buildConfigField("String", "WIFI_IP", properties.getProperty("WIFI_IP", "\"192.168.18.23\""))
     }
 
     buildFeatures {
@@ -91,11 +93,13 @@ dependencies {
     implementation(libs.androidx.fragment)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.recyclerview)
+    implementation(libs.androidx.security.crypto)
     implementation(libs.retrofit)
     implementation(libs.retrofit.gson)
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
     implementation(libs.coil.compose)
+    implementation(libs.coil.svg)
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services.auth)
     implementation(libs.googleid)

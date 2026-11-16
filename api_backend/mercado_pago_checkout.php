@@ -2,8 +2,27 @@
 header('Content-Type: application/json; charset=utf-8');
 
 // --- CONFIGURACIÓN DE MERCADO PAGO ---
-// Reemplaza esto con tu Access Token Real de Mercado Pago (Panel de Desarrollador)
-$access_token = "TEST-8514936306504285-091415-3733c7f9999999999999999999999";
+$access_token = getenv('MERCADOPAGO_ACCESS_TOKEN');
+if (!$access_token) {
+    $env_paths = ['.env', '../.env', '../../.env', __DIR__ . '/.env', __DIR__ . '/../.env'];
+    foreach ($env_paths as $env_path) {
+        if (file_exists($env_path)) {
+            $lines = file($env_path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            foreach ($lines as $line) {
+                if (strpos(trim($line), '#') === 0) continue;
+                if (strpos($line, 'MERCADOPAGO_ACCESS_TOKEN=') === 0) {
+                    $access_token = trim(substr($line, strlen('MERCADOPAGO_ACCESS_TOKEN=')));
+                    $access_token = trim($access_token, '"\'');
+                    break 2;
+                }
+            }
+        }
+    }
+}
+
+if (!$access_token) {
+    $access_token = "TEST-8514936306504285-091415-3733c7f9999999999999999999999";
+}
 
 $data = json_decode(file_get_contents('php://input'), true);
 
